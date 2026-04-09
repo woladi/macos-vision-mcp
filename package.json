@@ -6,11 +6,17 @@
   "bin": {
     "macos-vision-mcp": "./dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/woladi/macos-vision-mcp.git"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "engines": {
     "node": ">=18.0.0",
-    "os": ["darwin"]
+    "os": [
+      "darwin"
+    ]
   },
   "keywords": [
     "mcp",
@@ -26,8 +32,19 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "prepare": "npm run build",
+    "lint": "eslint src",
+    "format": "prettier --write .",
+    "prepare": "npm run build && husky",
     "release": "release-it"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.0",
@@ -35,11 +52,17 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@release-it/conventional-changelog": "^10.0.6",
     "@types/node": "^20.0.0",
-    "release-it": "^17.0.0",
-    "@release-it/conventional-changelog": "^8.0.0",
-    "@commitlint/cli": "^19.0.0",
-    "@commitlint/config-conventional": "^19.0.0"
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1",
+    "release-it": "^19.2.4",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.58.0"
   }
 }
