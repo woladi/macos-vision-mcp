@@ -73,6 +73,34 @@ Restart your client. The tools appear automatically.
 | `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                        | "What is in this image?"                       |
 | `analyze_document` | Full pipeline: OCR + faces + barcodes + rectangles in one call.                                                             | "Extract everything from this scanned invoice" |
 
+## Usage
+
+Use the tool name explicitly in your prompt to guarantee local processing:
+
+**Extract text from an image or PDF:**
+
+```
+Use ocr_image to extract text from ~/Desktop/invoice.pdf
+```
+
+**Detect faces in a photo:**
+
+```
+Use detect_faces on ~/Photos/team.jpg and tell me how many people are in it
+```
+
+**Classify image content:**
+
+```
+Use classify_image on ~/Downloads/unknown.jpg
+```
+
+**Full document analysis (OCR + faces + barcodes in one call):**
+
+```
+Use analyze_document on ~/Desktop/scan.pdf and extract everything you can find
+```
+
 ## Configuration
 
 ### Claude Code
