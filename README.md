@@ -1,87 +1,119 @@
 # macos-vision-mcp
 
-[![npm version](https://img.shields.io/npm/v/macos-vision-mcp)](https://www.npmjs.com/package/macos-vision-mcp)
-[![license](https://img.shields.io/npm/l/macos-vision-mcp)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-macOS-lightgrey)](https://developer.apple.com/documentation/vision)
-[![no API key](https://img.shields.io/badge/no%20API%20key-required-brightgreen)](#)
+Local OCR & image analysis for any MCP client — private, offline, no API keys.
 
-Pre-extracts text and image data locally before Claude ever sees it — cutting token usage by ~97% on real documents. Files never leave your Mac: no cloud API, no API keys, no network requests.
+[![npm version](https://img.shields.io/npm/v/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-ffd60a?style=flat-square)](LICENSE)
+[![macOS 13.0+](https://img.shields.io/badge/macOS-13.0%2B-0078d7?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/documentation/vision)
+[![No API Key](https://img.shields.io/badge/no%20API%20key-required-brightgreen?style=flat-square)](#)
+[![Offline](https://img.shields.io/badge/offline-yes-blue?style=flat-square)](#)
 
-## Requirements
+Pre-extracts text and image data locally before your AI ever sees it — cutting token usage by ~97% on real documents. Files never leave your Mac: no cloud API, no API keys, no network requests.
 
-- macOS 12 Monterey or later
-- Node.js 18+
-- Xcode Command Line Tools
+## What you get
 
-```sh
-xcode-select --install
-```
+- OCR for images and PDFs (JPG, PNG, HEIC, TIFF, multi-page PDF) via Apple Vision Framework.
+- ~97% token reduction: a 44-page PDF costs ~2,400 tokens instead of ~73,500.
+- Face detection, barcode/QR reading, and image classification — all on-device.
+- Full document pipeline: OCR + faces + barcodes + rectangles in a single tool call.
+- Works with Claude Code, Claude Desktop, and Cursor — any MCP-compatible client.
 
-## Why?
+## ❌ Without / ✅ With
 
-Sending images or PDFs directly to Claude is expensive. This server pre-extracts the content locally and sends only the text — a fraction of the tokens:
+❌ **Without macos-vision-mcp:**
 
-| Method                                | Tokens (44-page PDF) |
-| ------------------------------------- | -------------------- |
-| Claude Code reading PDF directly      | ~73,500              |
-| Claude.ai file upload                 | ~61,500              |
-| **macos-vision-mcp (pre-extraction)** | **~2,400**           |
+- Sending a 44-page PDF costs ~73,500 tokens
+- Every image, invoice, or contract goes through a cloud API
+- Sensitive documents leave your machine on every request
 
-That's ~97% fewer tokens — meaning more context for your actual work.
+✅ **With macos-vision-mcp:**
 
-## Installation
+- Local Apple Vision pre-extracts text before Claude ever sees it
+- ~2,400 tokens for the same 44-page PDF — 97% fewer
+- Files never leave your Mac
 
-1. Install the package globally (or use `npx`):
+## Privacy layer
+
+macos-vision-mcp acts as a local pre-processing layer between your documents and the cloud. Useful for:
+
+- Legal documents, contracts, NDAs
+- Financial reports, invoices, internal spreadsheets
+- Medical records or any GDPR-sensitive content
+- Any situation where you want to extract structured data locally before deciding what (if anything) to send upstream
+
+Instead of sending the raw document to your AI, you extract the text and structure locally first. The model then works only with the extracted text — never the original file.
+
+## Quick Start
+
+**Step 1** — Install the package:
 
 ```sh
 npm install -g macos-vision-mcp
 ```
 
-2. Register the MCP server with Claude Code:
+**Step 2** — Add to your MCP client (example for Claude Code):
 
 ```sh
 claude mcp add macos-vision-mcp -- macos-vision-mcp
 ```
 
-3. Restart Claude Code. The tools will appear automatically.
+Restart your client. The tools appear automatically.
 
-> **Note:** The underlying native module `macos-vision` is compiled against your local Node.js during install. If you switch Node versions, run `npm rebuild` inside the package directory.
+> **Note:** The native module `macos-vision` compiles against your local Node.js at install time. If you switch Node versions, run `npm rebuild` inside the package directory.
 
 ## Available Tools
 
-| Tool               | What it does                                                                                                                | Example trigger                                |
+| Tool               | What it does                                                                                                                | Example prompt                                 |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `ocr_image`        | Extract text from an image or PDF (JPG, PNG, HEIC, TIFF, PDF). Returns plain text or structured blocks with bounding boxes. | "Read the text from ~/Desktop/screenshot.png"  |
 | `detect_faces`     | Detect human faces and return their count and positions.                                                                    | "How many people are in this photo?"           |
-| `detect_barcodes`  | Read QR codes, EAN, UPC, Code128, PDF417, Aztec and other 1D/2D codes.                                                      | "What does this QR code say?"                  |
-| `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                        | "What's in this image?"                        |
-| `analyze_document` | Full pipeline: OCR + faces + barcodes + rectangles in one shot.                                                             | "Extract everything from this scanned invoice" |
+| `detect_barcodes`  | Read QR codes, EAN, UPC, Code128, PDF417, Aztec, and other 1D/2D codes.                                                     | "What does the QR code in /tmp/qr.jpg say?"    |
+| `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                        | "What is in this image?"                       |
+| `analyze_document` | Full pipeline: OCR + faces + barcodes + rectangles in one call.                                                             | "Extract everything from this scanned invoice" |
 
-## Usage Examples
+## Configuration
 
-**Extract text from a screenshot:**
+### Claude Code
 
-```
-Read the text from ~/Desktop/screenshot.png
-```
-
-**Decode a QR code from a saved image:**
-
-```
-What does the QR code in /tmp/qr.jpg say?
+```sh
+claude mcp add macos-vision-mcp -- macos-vision-mcp
 ```
 
-**Full document analysis:**
+### Claude Desktop
 
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "macos-vision-mcp": {
+      "command": "macos-vision-mcp"
+    }
+  }
+}
 ```
-Analyze /Users/me/Documents/scan.pdf and extract everything you can find.
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "macos-vision-mcp": {
+      "command": "macos-vision-mcp"
+    }
+  }
+}
 ```
+
+If you installed with `npx` rather than globally, replace `"command": "macos-vision-mcp"` with `"command": "npx", "args": ["macos-vision-mcp"]`.
 
 ## Privacy by design
 
 - No files are uploaded to any server
-- Processing uses Apple's on-device Vision framework — same engine as Photos.app and Live Text
-- Works fully offline — no network requests after `npm install`
+- Powered by Apple Vision Framework — same engine as Live Text in Photos.app
+- 100% offline after `npm install`
 
 ## Contributing
 
