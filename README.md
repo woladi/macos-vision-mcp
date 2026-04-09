@@ -17,6 +17,8 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 - Face detection, barcode/QR reading, and image classification — all on-device.
 - Full document pipeline: OCR + faces + barcodes + rectangles in a single tool call.
 - Works with Claude Code, Claude Desktop, and Cursor — any MCP-compatible client.
+- No files uploaded to any server — processing stays entirely on your Mac.
+- 100% offline after `npm install` — powered by Apple Vision Framework, same engine as Live Text in Photos.app.
 
 ## ❌ Without / ✅ With
 
@@ -108,12 +110,6 @@ Add to `~/.cursor/mcp.json`:
 ```
 
 If you installed with `npx` rather than globally, replace `"command": "macos-vision-mcp"` with `"command": "npx", "args": ["macos-vision-mcp"]`.
-
-## Privacy by design
-
-- No files are uploaded to any server
-- Powered by Apple Vision Framework — same engine as Live Text in Photos.app
-- 100% offline after `npm install`
 
 ## Contributing
 
