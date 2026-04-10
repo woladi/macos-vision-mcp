@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.woladi/macos-vision-mcp",
+  "description": "Local OCR & image analysis via Apple Vision — no cloud, no API keys, ~97% fewer tokens on PDFs.",
+  "repository": {
+    "url": "https://github.com/woladi/macos-vision-mcp",
+    "source": "github"
+  },
+  "version": "0.2.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "macos-vision-mcp",
+      "version": "0.2.3",
+      "runtimeHints": {
+        "os": ["darwin"]
+      },
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
