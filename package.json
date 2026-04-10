@@ -1,7 +1,7 @@
 {
   "name": "macos-vision-mcp",
   "mcpName": "io.github.woladi/macos-vision-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "MCP server wrapping Apple Vision Framework for local OCR and image analysis — no cloud, no API keys.",
   "type": "module",
   "bin": {
