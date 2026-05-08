@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 (2026-05-08)
+
+### Bug Fixes
+
+* upgrade npm to latest for OIDC trusted publishing support ([b1b1cb5](https://github.com/woladi/macos-vision-mcp/commit/b1b1cb58675dd2af0427f8427f5b80391032e2a5))
+
 ## 0.2.6 (2026-05-08)
 
 ## 0.2.5 (2026-05-08)
