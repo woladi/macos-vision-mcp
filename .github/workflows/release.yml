@@ -49,4 +49,4 @@ jobs:
           npm config list --json | grep -E '(registry|_authToken)' || true
 
       - name: Publish to npm
-        run: npm publish --provenance
+        run: npm publish --provenance --loglevel=verbose 2>&1 | tail -80
