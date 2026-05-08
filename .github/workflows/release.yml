@@ -33,7 +33,10 @@ jobs:
             npm pkg set version="$VERSION"
           fi
 
-      - name: Release
-        run: npx release-it@latest --ci --npm.provenance
+      - name: Release (git tag + GitHub release)
+        run: npx release-it@latest --ci --no-npm.publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm
+        run: npm publish --provenance
