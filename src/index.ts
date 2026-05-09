@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -17,9 +18,13 @@ import {
 } from "macos-vision";
 import { z } from "zod";
 
+// Read version from package.json so release-it bumps stay in sync automatically.
+const require = createRequire(import.meta.url);
+const { version: PACKAGE_VERSION } = require("../package.json") as { version: string };
+
 const server = new McpServer({
   name: "macos-vision-mcp",
-  version: "0.4.0",
+  version: PACKAGE_VERSION,
 });
 
 // ─── Internal types: structured document output ──────────────────────────────
