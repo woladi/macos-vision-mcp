@@ -144,6 +144,13 @@ The tool returns structured JSON; the model picks the output format you ask for 
 
 Use `paragraphs[].text` for the 95% case (rebuild Markdown/HTML/plain text directly). Reach for `textBlocks[]` when you need spatial context — multi-column layouts, tables, forms, IDs.
 
+**Notes:**
+
+- `ocr_image` in `blocks` mode returns the same per-page shape minus the detection sections: `{ pages: [{ page, paragraphs, textBlocks }] }`.
+- PDFs are processed page by page. All coordinates are page-local (0–1), and `paragraphId` / `lineId` reset on every page.
+- Face, barcode, and rectangle detection on PDFs is best-effort — the underlying binary analyzes the file as a whole rather than per page, so any detections returned are attached to page 0 only.
+- Paragraph grouping uses spatial heuristics. For multi-column layouts (magazine spreads, wiki pages with side panels) the heuristic can collapse the whole page into a single paragraph. When that happens, fall back to `textBlocks[]` and reconstruct from the bounding boxes.
+
 ## Configuration
 
 ### Claude Code
