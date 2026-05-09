@@ -14,14 +14,159 @@ import {
   type Barcode,
   type Rectangle,
   type Classification,
-  type LayoutBlock,
 } from "macos-vision";
 import { z } from "zod";
 
 const server = new McpServer({
   name: "macos-vision-mcp",
-  version: "0.1.0",
+  version: "0.3.0",
 });
+
+// ─── Internal types: structured document output ──────────────────────────────
+
+interface Bbox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface Paragraph {
+  paragraphId: number;
+  lineIds: number[];
+  text: string;
+}
+
+interface TextBlockOut {
+  text: string;
+  lineId: number;
+  paragraphId: number;
+  confidence: number;
+  bbox: Bbox;
+}
+
+interface BarcodeOut {
+  value: string;
+  symbology: string;
+  bbox: Bbox;
+}
+
+interface RectangleOut {
+  confidence: number;
+  bbox: Bbox;
+}
+
+interface PageAnalysis {
+  page: number;
+  paragraphs: Paragraph[];
+  textBlocks: TextBlockOut[];
+  faces: Bbox[];
+  barcodes: BarcodeOut[];
+  rectangles: RectangleOut[];
+}
+
+interface DocumentAnalysisResult {
+  source: { path: string; pageCount: number; isPdf: boolean };
+  pages: PageAnalysis[];
+  summary: {
+    totalTextBlocks: number;
+    totalParagraphs: number;
+    totalFaces: number;
+    totalBarcodes: number;
+    totalRectangles: number;
+  };
+}
+
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+function groupBlocksByPage(blocks: VisionBlock[]): Map<number, VisionBlock[]> {
+  const pages = new Map<number, VisionBlock[]>();
+  for (const block of blocks) {
+    const page = block.page ?? 0;
+    const existing = pages.get(page) ?? [];
+    existing.push(block);
+    pages.set(page, existing);
+  }
+  return pages;
+}
+
+function buildPageAnalysis(
+  pageIndex: number,
+  pageBlocks: VisionBlock[],
+  faces?: Face[],
+  barcodes?: Barcode[],
+  rectangles?: Rectangle[],
+): PageAnalysis {
+  const layout = inferLayout({ textBlocks: pageBlocks, faces, barcodes, rectangles });
+
+  const textBlocks: TextBlockOut[] = [];
+  const facesOut: Bbox[] = [];
+  const barcodesOut: BarcodeOut[] = [];
+  const rectanglesOut: RectangleOut[] = [];
+
+  // Insertion-ordered map: paragraphId → { ordered lineIds, per-line text fragments }.
+  // Layout iteration order is reading order, so first appearance = correct paragraph order.
+  const paragraphMap = new Map<number, { lineIds: number[]; lineTextMap: Map<number, string[]> }>();
+
+  for (const block of layout) {
+    switch (block.kind) {
+      case "text": {
+        textBlocks.push({
+          text: block.text,
+          lineId: block.lineId,
+          paragraphId: block.paragraphId,
+          confidence: block.confidence ?? 0,
+          bbox: { x: block.x, y: block.y, width: block.width, height: block.height },
+        });
+
+        let para = paragraphMap.get(block.paragraphId);
+        if (!para) {
+          para = { lineIds: [], lineTextMap: new Map() };
+          paragraphMap.set(block.paragraphId, para);
+        }
+        let lineFrags = para.lineTextMap.get(block.lineId);
+        if (!lineFrags) {
+          lineFrags = [];
+          para.lineIds.push(block.lineId);
+          para.lineTextMap.set(block.lineId, lineFrags);
+        }
+        lineFrags.push(block.text);
+        break;
+      }
+      case "face":
+        facesOut.push({ x: block.x, y: block.y, width: block.width, height: block.height });
+        break;
+      case "barcode":
+        barcodesOut.push({
+          value: block.value,
+          symbology: block.type,
+          bbox: { x: block.x, y: block.y, width: block.width, height: block.height },
+        });
+        break;
+      case "rectangle":
+        rectanglesOut.push({
+          confidence: block.confidence ?? 0,
+          bbox: { x: block.x, y: block.y, width: block.width, height: block.height },
+        });
+        break;
+    }
+  }
+
+  const paragraphs: Paragraph[] = [];
+  for (const [paragraphId, info] of paragraphMap) {
+    const lines = info.lineIds.map((lineId) => info.lineTextMap.get(lineId)!.join(" "));
+    paragraphs.push({ paragraphId, lineIds: info.lineIds, text: lines.join("\n") });
+  }
+
+  return {
+    page: pageIndex,
+    paragraphs,
+    textBlocks,
+    faces: facesOut,
+    barcodes: barcodesOut,
+    rectangles: rectanglesOut,
+  };
+}
 
 // ─── Resource: capabilities ──────────────────────────────────────────────────
 
@@ -34,13 +179,13 @@ server.resource(
       {
         uri: "macos-vision://capabilities",
         mimeType: "text/plain",
-        text: `macos-vision-mcp — local Apple Vision Framework for Claude Code
-==============================================================
+        text: `macos-vision-mcp — local Apple Vision Framework for any MCP client
+==================================================================
 
 All processing happens ON-DEVICE. No files leave your Mac. No API keys required.
 
 System requirements:
-  - macOS 12 Monterey or later
+  - macOS 13 Ventura or later
   - Node.js 18+
   - Xcode Command Line Tools (xcode-select --install)
 
@@ -48,28 +193,39 @@ Available capabilities:
 
   OCR (ocr_image)
     Extract text from images or PDFs using Apple's Vision OCR engine.
-    Supports: jpg, jpeg, png, heic, heif, tiff, bmp, pdf
-    Modes: "text" (plain string) or "blocks" (structured with bounding boxes)
+    Supported formats: jpg, jpeg, png, heic, heif, tiff, bmp, pdf
+    Modes:
+      "text"   — single plain-text string (default).
+      "blocks" — JSON { pages: [{ page, paragraphs, textBlocks }] } where
+                 paragraphs[].text holds reading-order paragraph text and
+                 textBlocks[] preserves bounding boxes, lineId, paragraphId,
+                 and confidence for spatial reconstruction.
 
   Face detection (detect_faces)
     Detect human faces and return their count and bounding box positions.
 
   Barcode / QR code detection (detect_barcodes)
-    Read QR codes, EAN, UPC, Code128, PDF417, Aztec, DataMatrix and more.
+    Read QR codes, EAN, UPC, Code128, PDF417, Aztec, DataMatrix, and more.
 
   Image classification (classify_image)
-    Classify the content of an image into 1000+ categories with confidence scores.
+    Classify image content into 1000+ categories with confidence scores.
 
   Document analysis (analyze_document)
-    Full pipeline: OCR + face detection + barcode detection + rectangle detection
-    + layout inference. Returns a structured report.
+    Full pipeline returning structured JSON suitable for reconstructing the
+    document into Markdown, HTML, DOCX, or any other format. Includes:
+      - paragraphs[] — reading-order text grouped into paragraphs and lines
+      - textBlocks[] — every recognized block with bbox/lineId/paragraphId
+      - faces, barcodes, rectangles — parallel detection sections
+    PDFs are split per-page; coordinates are page-local 0–1.
 
-  Layout inference (used internally)
-    Orders detected text blocks into natural reading order based on visual layout.
+  Reconstruction tip
+    Concatenate paragraphs[].text with blank lines between paragraphs to get
+    reading-order plain text. Use textBlocks[] bounding boxes to recover
+    columns, tables, or form layout. PDFs return one entry per page in pages[].
 `,
       },
     ],
-  })
+  }),
 );
 
 // ─── Tool 1: ocr_image ───────────────────────────────────────────────────────
@@ -85,43 +241,40 @@ Supported formats: jpg, jpeg, png, heic, heif, tiff, bmp, pdf
 
 Parameters:
   path   — absolute or relative path to the image/PDF file
-  format — "text" returns a single plain-text string (default)
-           "blocks" returns structured text blocks sorted in reading order,
-           each block includes the recognized text and its bounding box as
-           percentage of image dimensions (top, left, width, height)
+  format — "text"   returns a single plain-text string (default)
+           "blocks" returns JSON { pages: [{ page, paragraphs, textBlocks }] }
+                    with reading-order paragraphs and per-block bounding boxes.
+                    Each textBlock carries lineId, paragraphId, confidence, and
+                    page-local bbox (0–1). PDFs return one entry per page.
 
-Returns: extracted text as a string (format="text") or a JSON array of
-         text blocks with position data (format="blocks").`,
+Returns: extracted text as a string (format="text") or a JSON document with
+         per-page paragraphs and text blocks (format="blocks").`,
   {
     path: z.string().describe("Absolute or relative path to the image or PDF file"),
     format: z
       .enum(["text", "blocks"])
       .default("text")
-      .describe('"text" for plain string output, "blocks" for structured blocks with bounding boxes'),
+      .describe('"text" for plain string output, "blocks" for per-page paragraphs and text blocks'),
   },
   async ({ path, format }) => {
     if (format === "blocks") {
       const rawBlocks = await ocr(path, { format: "blocks" });
-      const layout = inferLayout({ textBlocks: rawBlocks });
-
-      const formatted = layout
-        .filter((block): block is LayoutBlock & { kind: "text"; text: string } => block.kind === "text")
-        .map((block, i) => ({
-          index: i + 1,
-          text: block.text,
-          position: {
-            top: `${(block.y * 100).toFixed(1)}%`,
-            left: `${(block.x * 100).toFixed(1)}%`,
-            width: `${(block.width * 100).toFixed(1)}%`,
-            height: `${(block.height * 100).toFixed(1)}%`,
-          },
-        }));
+      const pageMap = groupBlocksByPage(rawBlocks);
+      const sortedPageEntries = [...pageMap.entries()].sort(([a], [b]) => a - b);
+      const pages = sortedPageEntries.map(([pageIndex, pageBlocks]) => {
+        const analysis = buildPageAnalysis(pageIndex, pageBlocks);
+        return {
+          page: analysis.page,
+          paragraphs: analysis.paragraphs,
+          textBlocks: analysis.textBlocks,
+        };
+      });
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(formatted, null, 2),
+            text: JSON.stringify({ pages }, null, 2),
           },
         ],
       };
@@ -136,7 +289,7 @@ Returns: extracted text as a string (format="text") or a JSON array of
         },
       ],
     };
-  }
+  },
 );
 
 // ─── Tool 2: detect_faces ────────────────────────────────────────────────────
@@ -182,7 +335,7 @@ Returns: JSON with the total face count and an array of face positions expressed
         },
       ],
     };
-  }
+  },
 );
 
 // ─── Tool 3: detect_barcodes ─────────────────────────────────────────────────
@@ -225,7 +378,7 @@ Returns: JSON array of detected codes, each with its decoded value and symbology
         },
       ],
     };
-  }
+  },
 );
 
 // ─── Tool 4: classify_image ──────────────────────────────────────────────────
@@ -237,7 +390,7 @@ server.tool(
 USE WHEN: The user wants to know what is depicted in an image — objects, scenes, activities,
           animals, food, etc. Works with 1000+ categories and returns confidence scores.
 DO NOT USE for: text extraction (use ocr_image), face/barcode detection (dedicated tools),
-                images that need detailed visual description (use Claude's built-in vision).
+                images that need detailed visual description (use the model's built-in vision).
 
 Returns: JSON array of classification labels sorted by confidence (highest first),
          each with a label name and confidence score (0–1).`,
@@ -269,31 +422,51 @@ Returns: JSON array of classification labels sorted by confidence (highest first
         },
       ],
     };
-  }
+  },
 );
 
 // ─── Tool 5: analyze_document ────────────────────────────────────────────────
 
 server.tool(
   "analyze_document",
-  `Run a full analysis pipeline on a local image or PDF: OCR text extraction, face detection,
-barcode/QR detection, and rectangle detection — all in parallel, fully offline, no API key needed.
+  `Run a full analysis pipeline on a local image or PDF and return structured JSON for document
+reconstruction: OCR (with line/paragraph grouping in reading order), face detection, barcode/QR
+detection, and rectangle detection — all in parallel, fully offline, no API key needed.
 
-USE WHEN: The user wants to extract everything from a single file in one shot — text, faces,
-          codes, and structural elements. Ideal for scanned documents, ID cards, receipts,
-          forms, photos with mixed content.
-DO NOT USE when: the user needs only one specific capability (use the dedicated tool instead,
-                 it will be faster).
+USE WHEN: The user wants the model to reconstruct a document into Markdown, HTML, DOCX, or any
+          other format — invoices, scanned reports, contracts, IDs, receipts, mixed-content scans.
+          Returns enough structure (paragraphs + raw text blocks with bounding boxes) that the
+          model can render the output in whatever format the user asks for.
+DO NOT USE when: the user needs only one capability (use the dedicated tool — it will be faster).
 
-Returns: a structured text report with four clearly labelled sections:
-  EXTRACTED TEXT     — full OCR output in reading order
-  DETECTED FACES     — count and positions of faces
-  DETECTED CODES     — decoded barcodes/QR codes
-  DETECTED RECTANGLES — count and positions of rectangular regions`,
+Returns: JSON with this shape:
+  {
+    "source":  { "path", "pageCount", "isPdf" },
+    "pages":   [
+      {
+        "page":        0,
+        "paragraphs":  [{ "paragraphId", "lineIds", "text" }, ...],   // primary surface
+        "textBlocks":  [{ "text", "lineId", "paragraphId",
+                          "confidence", "bbox": { "x","y","width","height" } }, ...],
+        "faces":       [{ "x","y","width","height" }, ...],
+        "barcodes":    [{ "value","symbology","bbox" }, ...],
+        "rectangles":  [{ "confidence","bbox" }, ...]
+      },
+      ...
+    ],
+    "summary": { "totalTextBlocks","totalParagraphs","totalFaces","totalBarcodes","totalRectangles" }
+  }
+
+Use paragraphs[].text as the primary surface for reading-order content. Use textBlocks[] when
+spatial information matters — multi-column layouts, tables, forms. PDFs return one entry per
+page; all coordinates are page-local 0–1. Face/barcode/rectangle detection on PDFs is best-effort
+(the underlying binary analyzes the PDF as a whole rather than per page).`,
   {
     path: z.string().describe("Absolute or relative path to the image or PDF file"),
   },
   async ({ path }) => {
+    const isPdf = path.toLowerCase().endsWith(".pdf");
+
     const [ocrBlocks, faces, barcodes, rectangles]: [
       VisionBlock[],
       Face[],
@@ -306,63 +479,62 @@ Returns: a structured text report with four clearly labelled sections:
       detectRectangles(path).catch((): Rectangle[] => []),
     ]);
 
-    const layout = inferLayout({ textBlocks: ocrBlocks, faces, barcodes, rectangles });
+    const pageMap = groupBlocksByPage(ocrBlocks);
+    const sortedPageEntries = [...pageMap.entries()].sort(([a], [b]) => a - b);
 
-    const extractedText = layout
-      .filter((b): b is LayoutBlock & { kind: "text"; text: string } => b.kind === "text")
-      .map((b) => b.text)
-      .join("\n");
+    const pages: PageAnalysis[] = [];
 
-    const facesText =
-      faces.length === 0
-        ? "None detected."
-        : `${faces.length} face${faces.length > 1 ? "s" : ""} detected:\n` +
-          faces
-            .map(
-              (f, i) =>
-                `  Face ${i + 1}: top=${(f.y * 100).toFixed(1)}%, left=${(f.x * 100).toFixed(1)}%, width=${(f.width * 100).toFixed(1)}%, height=${(f.height * 100).toFixed(1)}%`
-            )
-            .join("\n");
+    if (sortedPageEntries.length === 0) {
+      // No OCR text. Still emit one synthetic page if there are non-text detections,
+      // so downstream callers see a consistent shape.
+      if (faces.length > 0 || barcodes.length > 0 || rectangles.length > 0) {
+        pages.push(buildPageAnalysis(0, [], faces, barcodes, rectangles));
+      }
+    } else {
+      const firstPageIndex = sortedPageEntries[0][0];
+      for (const [pageIndex, pageBlocks] of sortedPageEntries) {
+        const isFirstPage = pageIndex === firstPageIndex;
+        pages.push(
+          buildPageAnalysis(
+            pageIndex,
+            pageBlocks,
+            isFirstPage ? faces : undefined,
+            isFirstPage ? barcodes : undefined,
+            isFirstPage ? rectangles : undefined,
+          ),
+        );
+      }
+    }
 
-    const barcodesText =
-      barcodes.length === 0
-        ? "None detected."
-        : barcodes
-            .map(
-              (c, i) =>
-                `  Code ${i + 1} [${c.type}]: ${c.value}`
-            )
-            .join("\n");
+    let totalTextBlocks = 0;
+    let totalParagraphs = 0;
+    let totalFaces = 0;
+    let totalBarcodes = 0;
+    let totalRectangles = 0;
+    for (const p of pages) {
+      totalTextBlocks += p.textBlocks.length;
+      totalParagraphs += p.paragraphs.length;
+      totalFaces += p.faces.length;
+      totalBarcodes += p.barcodes.length;
+      totalRectangles += p.rectangles.length;
+    }
 
-    const rectanglesText =
-      rectangles.length === 0
-        ? "None detected."
-        : `${rectangles.length} rectangle${rectangles.length > 1 ? "s" : ""} detected:\n` +
-          rectangles
-            .map(
-              (r, i) =>
-                `  Rect ${i + 1}: topLeft=(${(r.topLeft[0] * 100).toFixed(1)}%, ${(r.topLeft[1] * 100).toFixed(1)}%), topRight=(${(r.topRight[0] * 100).toFixed(1)}%, ${(r.topRight[1] * 100).toFixed(1)}%), confidence=${(r.confidence * 100).toFixed(1)}%`
-            )
-            .join("\n");
-
-    const report = [
-      "=== EXTRACTED TEXT ===",
-      extractedText || "(no text found)",
-      "",
-      "=== DETECTED FACES ===",
-      facesText,
-      "",
-      "=== DETECTED CODES ===",
-      barcodesText,
-      "",
-      "=== DETECTED RECTANGLES ===",
-      rectanglesText,
-    ].join("\n");
+    const result: DocumentAnalysisResult = {
+      source: { path, pageCount: pages.length, isPdf },
+      pages,
+      summary: {
+        totalTextBlocks,
+        totalParagraphs,
+        totalFaces,
+        totalBarcodes,
+        totalRectangles,
+      },
+    };
 
     return {
-      content: [{ type: "text", text: report }],
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
