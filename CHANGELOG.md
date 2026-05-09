@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 (2026-05-09)
+
+### Bug Fixes
+
+* read McpServer version from package.json at runtime ([7b4703b](https://github.com/woladi/macos-vision-mcp/commit/7b4703b5ef3b77b487f7c654965394b5966d02c9))
+
 ## 0.4.1 (2026-05-09)
 
 ## 0.4.0 (2026-05-09)
