@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-05-09)
+
+### Features
+
+* structured JSON output for document reconstruction ([c00fa42](https://github.com/woladi/macos-vision-mcp/commit/c00fa42fe9f8faa033cd22dfc50d1fec9f0676e0))
+
 ## 0.2.7 (2026-05-08)
 
 ### Bug Fixes
