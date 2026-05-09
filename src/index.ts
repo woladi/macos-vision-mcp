@@ -19,7 +19,7 @@ import { z } from "zod";
 
 const server = new McpServer({
   name: "macos-vision-mcp",
-  version: "0.3.0",
+  version: "0.4.0",
 });
 
 // ─── Internal types: structured document output ──────────────────────────────
