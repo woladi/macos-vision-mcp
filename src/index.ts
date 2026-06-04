@@ -8,12 +8,14 @@ import {
   detectFaces,
   detectBarcodes,
   detectRectangles,
+  detectDocument,
   classify,
   inferLayout,
   type VisionBlock,
   type Face,
   type Barcode,
   type Rectangle,
+  type DocumentBounds,
   type Classification,
 } from "macos-vision";
 import { z } from "zod";
@@ -192,7 +194,9 @@ All processing happens ON-DEVICE. No files leave your Mac. No API keys required.
 System requirements:
   - macOS 13 Ventura or later
   - Node.js 18+
-  - Xcode Command Line Tools (xcode-select --install)
+  - Xcode Command Line Tools (xcode-select --install) — optional, only used
+    as a fallback if the prebuilt Swift helpers can't be downloaded at install
+    time. The common path needs nothing beyond macOS + Node.js.
 
 Available capabilities:
 
@@ -205,12 +209,21 @@ Available capabilities:
                  paragraphs[].text holds reading-order paragraph text and
                  textBlocks[] preserves bounding boxes, lineId, paragraphId,
                  and confidence for spatial reconstruction.
+    PDF page range:
+      start_page / max_pages (both 1-based) restrict OCR to a slice of a
+      multi-page PDF — useful for previews or processing long documents in
+      chunks. Both are ignored for non-PDF inputs.
 
   Face detection (detect_faces)
     Detect human faces and return their count and bounding box positions.
 
   Barcode / QR code detection (detect_barcodes)
     Read QR codes, EAN, UPC, Code128, PDF417, Aztec, DataMatrix, and more.
+
+  Document boundary detection (detect_document)
+    Locate the quadrilateral of a document in a photo — receipts, paper
+    forms, IDs shot at an angle — returning the four corner points and a
+    confidence score. Useful for crop / deskew hints before OCR.
 
   Image classification (classify_image)
     Classify image content into 1000+ categories with confidence scores.
@@ -221,7 +234,8 @@ Available capabilities:
       - paragraphs[] — reading-order text grouped into paragraphs and lines
       - textBlocks[] — every recognized block with bbox/lineId/paragraphId
       - faces, barcodes, rectangles — parallel detection sections
-    PDFs are split per-page; coordinates are page-local 0–1.
+    PDFs are split per-page; coordinates are page-local 0–1. Accepts the
+    same start_page / max_pages range options as ocr_image.
 
   Reconstruction tip
     Concatenate paragraphs[].text with blank lines between paragraphs to get
@@ -245,12 +259,16 @@ DO NOT USE for: images hosted on URLs (download first), non-macOS systems, or wh
 Supported formats: jpg, jpeg, png, heic, heif, tiff, bmp, pdf
 
 Parameters:
-  path   — absolute or relative path to the image/PDF file
-  format — "text"   returns a single plain-text string (default)
-           "blocks" returns JSON { pages: [{ page, paragraphs, textBlocks }] }
-                    with reading-order paragraphs and per-block bounding boxes.
-                    Each textBlock carries lineId, paragraphId, confidence, and
-                    page-local bbox (0–1). PDFs return one entry per page.
+  path       — absolute or relative path to the image/PDF file
+  format     — "text"   returns a single plain-text string (default)
+               "blocks" returns JSON { pages: [{ page, paragraphs, textBlocks }] }
+                        with reading-order paragraphs and per-block bounding boxes.
+                        Each textBlock carries lineId, paragraphId, confidence, and
+                        page-local bbox (0–1). PDFs return one entry per page.
+  start_page — PDFs only — 1-based index of the first page to OCR (default 1).
+               Ignored for images. start_page past the end returns an empty result.
+  max_pages  — PDFs only — maximum number of pages to OCR from start_page (default: all).
+               Ignored for images.
 
 Returns: extracted text as a string (format="text") or a JSON document with
          per-page paragraphs and text blocks (format="blocks").`,
@@ -260,10 +278,26 @@ Returns: extracted text as a string (format="text") or a JSON document with
       .enum(["text", "blocks"])
       .default("text")
       .describe('"text" for plain string output, "blocks" for per-page paragraphs and text blocks'),
+    start_page: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("PDFs only — 1-based first page to OCR. Ignored for images."),
+    max_pages: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("PDFs only — maximum number of pages to OCR. Ignored for images."),
   },
-  async ({ path, format }) => {
+  async ({ path, format, start_page, max_pages }) => {
     if (format === "blocks") {
-      const rawBlocks = await ocr(path, { format: "blocks" });
+      const rawBlocks = await ocr(path, {
+        format: "blocks",
+        startPage: start_page,
+        maxPages: max_pages,
+      });
       const pageMap = groupBlocksByPage(rawBlocks);
       const sortedPageEntries = [...pageMap.entries()].sort(([a], [b]) => a - b);
       const pages = sortedPageEntries.map(([pageIndex, pageBlocks]) => {
@@ -285,7 +319,11 @@ Returns: extracted text as a string (format="text") or a JSON document with
       };
     }
 
-    const text = await ocr(path, { format: "text" });
+    const text = await ocr(path, {
+      format: "text",
+      startPage: start_page,
+      maxPages: max_pages,
+    });
     return {
       content: [
         {
@@ -386,7 +424,62 @@ Returns: JSON array of detected codes, each with its decoded value and symbology
   },
 );
 
-// ─── Tool 4: classify_image ──────────────────────────────────────────────────
+// ─── Tool 4: detect_document ─────────────────────────────────────────────────
+
+server.tool(
+  "detect_document",
+  `Detect the boundary of a document in a local image using Apple Vision (offline, no API key needed).
+
+USE WHEN: The user has a photo of a piece of paper, a receipt, a card, an ID, or any
+          rectangular document and wants the four corner points — typically as a hint for
+          cropping, deskewing, or straightening the image before further OCR.
+DO NOT USE for: reading the document text (use ocr_image), classifying the image
+                (use classify_image), or analyzing a PDF (PDFs are already rectangular pages).
+
+Returns: JSON with the four corner points of the detected document — topLeft, topRight,
+         bottomLeft, bottomRight — each as { x, y } in 0–1 image coordinates, plus a
+         confidence score. Returns { "detected": false } if no document is found.`,
+  {
+    path: z.string().describe("Absolute or relative path to the image file"),
+  },
+  async ({ path }) => {
+    const doc: DocumentBounds | null = await detectDocument(path);
+
+    if (!doc) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `No document detected.\n\n${JSON.stringify({ detected: false }, null, 2)}`,
+          },
+        ],
+      };
+    }
+
+    const toCorner = ([x, y]: [number, number]) => ({ x, y });
+    const result = {
+      detected: true,
+      confidence: doc.confidence,
+      corners: {
+        topLeft: toCorner(doc.topLeft),
+        topRight: toCorner(doc.topRight),
+        bottomLeft: toCorner(doc.bottomLeft),
+        bottomRight: toCorner(doc.bottomRight),
+      },
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Document detected (confidence ${(doc.confidence * 100).toFixed(1)}%).\n\n${JSON.stringify(result, null, 2)}`,
+        },
+      ],
+    };
+  },
+);
+
+// ─── Tool 5: classify_image ──────────────────────────────────────────────────
 
 server.tool(
   "classify_image",
@@ -430,7 +523,7 @@ Returns: JSON array of classification labels sorted by confidence (highest first
   },
 );
 
-// ─── Tool 5: analyze_document ────────────────────────────────────────────────
+// ─── Tool 6: analyze_document ────────────────────────────────────────────────
 
 server.tool(
   "analyze_document",
@@ -465,11 +558,31 @@ Returns: JSON with this shape:
 Use paragraphs[].text as the primary surface for reading-order content. Use textBlocks[] when
 spatial information matters — multi-column layouts, tables, forms. PDFs return one entry per
 page; all coordinates are page-local 0–1. Face/barcode/rectangle detection on PDFs is best-effort
-(the underlying binary analyzes the PDF as a whole rather than per page).`,
+(the underlying binary analyzes the PDF as a whole rather than per page).
+
+Parameters:
+  path       — absolute or relative path to the image/PDF file
+  start_page — PDFs only — 1-based index of the first page to analyze (default 1).
+               Only narrows the OCR pass; face/barcode/rectangle detections are still
+               whole-document and attached to the first returned page. Ignored for images.
+  max_pages  — PDFs only — maximum number of pages to OCR from start_page (default: all).
+               Ignored for images.`,
   {
     path: z.string().describe("Absolute or relative path to the image or PDF file"),
+    start_page: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("PDFs only — 1-based first page to analyze. Ignored for images."),
+    max_pages: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("PDFs only — maximum number of pages to analyze. Ignored for images."),
   },
-  async ({ path }) => {
+  async ({ path, start_page, max_pages }) => {
     const isPdf = path.toLowerCase().endsWith(".pdf");
 
     const [ocrBlocks, faces, barcodes, rectangles]: [
@@ -478,7 +591,9 @@ page; all coordinates are page-local 0–1. Face/barcode/rectangle detection on 
       Barcode[],
       Rectangle[],
     ] = await Promise.all([
-      ocr(path, { format: "blocks" }).catch((): VisionBlock[] => []),
+      ocr(path, { format: "blocks", startPage: start_page, maxPages: max_pages }).catch(
+        (): VisionBlock[] => [],
+      ),
       detectFaces(path).catch((): Face[] => []),
       detectBarcodes(path).catch((): Barcode[] => []),
       detectRectangles(path).catch((): Rectangle[] => []),
