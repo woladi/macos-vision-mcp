@@ -25,3 +25,6 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# MCP registry tokens (local-only, never commit)
+.mcpregistry_*
