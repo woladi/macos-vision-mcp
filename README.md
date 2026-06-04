@@ -1,5 +1,9 @@
 # macos-vision-mcp
 
+<p align="center">
+  <img src=".github/assets/hero.jpg" alt="macos-vision-mcp — local, private, offline OCR for MCP-compatible LLMs" width="1200">
+</p>
+
 Local OCR & image analysis for any MCP client — private, offline, no API keys.
 
 [![npm version](https://img.shields.io/npm/v/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
