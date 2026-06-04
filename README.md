@@ -105,6 +105,16 @@ Use analyze_document on ~/Desktop/report.pdf and reconstruct it as clean Markdow
 
 The tool returns structured JSON; the model picks the output format you ask for (Markdown, HTML, DOCX outline, etc.) without any extra dependencies — no Ollama, no cloud LLM, no extra tooling.
 
+## Example workflows
+
+Real-world combinations that work out of the box once the server is connected:
+
+- **"Convert PDF → clean Markdown for LLM"** — `analyze_document` returns reading-order paragraphs and bounding boxes; the model renders Markdown ready to drop into a docs site, knowledge base, or RAG pipeline.
+- **"Extract invoice data locally before sending to GPT"** — pull line items, totals, vendor, and dates from the PDF locally with `analyze_document`, then send only the structured JSON upstream. The original document never leaves your Mac.
+- **"Scan receipts → JSON → expense tracker"** — `ocr_image` on a phone photo, the model normalizes amount / date / merchant, and pipes the result straight into your expense tool's API.
+- **"Decode a QR code from a screenshot"** — `detect_barcodes` returns the decoded value plus symbology in one round trip.
+- **"Crop a photo of a paper form before OCR"** — `detect_document` returns the four corner points so you (or a downstream tool) can deskew and crop the image before reading the text.
+
 ### Output schema (analyze_document)
 
 ```jsonc
