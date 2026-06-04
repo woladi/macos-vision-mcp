@@ -48,21 +48,17 @@ Instead of sending the raw document to your AI, you extract the text and structu
 
 ## Quick Start
 
-**Step 1** — Install the package:
+**Add to your MCP client (example for Claude Code):**
 
 ```sh
-npm install -g macos-vision-mcp
+claude mcp add macos-vision-mcp -- npx -y macos-vision-mcp
 ```
 
-**Step 2** — Add to your MCP client (example for Claude Code):
+Restart your client. `npx` fetches the package on first run, caches it, and the tools appear automatically — no separate install step. This is the convention used by most MCP servers and recommended by Anthropic, Cursor, and other clients.
 
-```sh
-claude mcp add macos-vision-mcp -- macos-vision-mcp
-```
+> **Note:** On first run, `macos-vision` downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases (~300 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
 
-Restart your client. The tools appear automatically.
-
-> **Note:** On install, `macos-vision` downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases. Xcode Command Line Tools are only required as a fallback when the download can't reach the network (or for unpublished versions) — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
+> **Prefer instant cold-starts (no npx cache lookup)?** Install globally with `npm install -g macos-vision-mcp` and use the alternative config shown at the bottom of [Configuration](#configuration).
 
 ## Available Tools
 
@@ -164,10 +160,12 @@ Use `paragraphs[].text` for the 95% case (rebuild Markdown/HTML/plain text direc
 
 ## Configuration
 
+All examples below use `npx -y` — the recommended default. No prior `npm install` needed; the package is fetched and cached on first run, and updates pick up automatically when the npx cache rolls over.
+
 ### Claude Code
 
 ```sh
-claude mcp add macos-vision-mcp -- macos-vision-mcp
+claude mcp add macos-vision-mcp -- npx -y macos-vision-mcp
 ```
 
 ### Claude Desktop
@@ -178,7 +176,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "macos-vision-mcp": {
-      "command": "macos-vision-mcp"
+      "command": "npx",
+      "args": ["-y", "macos-vision-mcp"]
     }
   }
 }
@@ -192,13 +191,22 @@ Add to `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "macos-vision-mcp": {
-      "command": "macos-vision-mcp"
+      "command": "npx",
+      "args": ["-y", "macos-vision-mcp"]
     }
   }
 }
 ```
 
-If you installed with `npx` rather than globally, replace `"command": "macos-vision-mcp"` with `"command": "npx", "args": ["macos-vision-mcp"]`.
+### Alternative: global install
+
+If you'd rather skip the npx cache lookup on cold starts — or you want to pin a specific version — install once:
+
+```sh
+npm install -g macos-vision-mcp
+```
+
+…then use `"command": "macos-vision-mcp"` (no `args`) in any of the JSON configs above, or `claude mcp add macos-vision-mcp -- macos-vision-mcp` for Claude Code. Note that global installs can break when switching Node versions with nvm / asdf / volta — re-run `npm install -g` after switching.
 
 ## Contributing
 
