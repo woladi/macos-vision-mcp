@@ -62,17 +62,18 @@ claude mcp add macos-vision-mcp -- macos-vision-mcp
 
 Restart your client. The tools appear automatically.
 
-> **Note:** The native module `macos-vision` compiles against your local Node.js at install time. If you switch Node versions, run `npm rebuild` inside the package directory.
+> **Note:** On install, `macos-vision` downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases. Xcode Command Line Tools are only required as a fallback when the download can't reach the network (or for unpublished versions) — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
 
 ## Available Tools
 
-| Tool               | What it does                                                                                                                                                                                            | Example prompt                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ocr_image`        | Extract text from an image or PDF (JPG, PNG, HEIC, TIFF, PDF). Returns plain text, or per-page paragraphs + text blocks with `lineId` / `paragraphId` and bounding boxes.                               | "Read the text from ~/Desktop/screenshot.png"      |
-| `detect_faces`     | Detect human faces and return their count and positions.                                                                                                                                                | "How many people are in this photo?"               |
-| `detect_barcodes`  | Read QR codes, EAN, UPC, Code128, PDF417, Aztec, and other 1D/2D codes.                                                                                                                                 | "What does the QR code in /tmp/qr.jpg say?"        |
-| `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                                                                                                    | "What is in this image?"                           |
-| `analyze_document` | Returns structured JSON with reading-order paragraphs, raw text blocks (bbox / confidence), faces, barcodes, and rectangles — ready for the model to reconstruct into Markdown, HTML, or anything else. | "Reconstruct ~/Desktop/scan.pdf as clean Markdown" |
+| Tool               | What it does                                                                                                                                                                                                                                                   | Example prompt                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `ocr_image`        | Extract text from an image or PDF (JPG, PNG, HEIC, TIFF, PDF). Returns plain text, or per-page paragraphs + text blocks with `lineId` / `paragraphId` and bounding boxes. Accepts `start_page` / `max_pages` for partial PDF OCR.                              | "Read the text from ~/Desktop/screenshot.png"        |
+| `detect_faces`     | Detect human faces and return their count and positions.                                                                                                                                                                                                       | "How many people are in this photo?"                 |
+| `detect_barcodes`  | Read QR codes, EAN, UPC, Code128, PDF417, Aztec, and other 1D/2D codes.                                                                                                                                                                                        | "What does the QR code in /tmp/qr.jpg say?"          |
+| `detect_document`  | Detect the four corner points of a document in a photo (paper, receipt, ID). Useful as a crop / deskew hint before OCR.                                                                                                                                        | "Find the document corners in ~/Desktop/receipt.jpg" |
+| `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                                                                                                                                                           | "What is in this image?"                             |
+| `analyze_document` | Returns structured JSON with reading-order paragraphs, raw text blocks (bbox / confidence), faces, barcodes, and rectangles — ready for the model to reconstruct into Markdown, HTML, or anything else. Also accepts `start_page` / `max_pages` for long PDFs. | "Reconstruct ~/Desktop/scan.pdf as clean Markdown"   |
 
 ## Usage
 
