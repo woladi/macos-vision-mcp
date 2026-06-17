@@ -11,7 +11,7 @@ Local OCR & image analysis for any MCP client — private, offline, no API keys.
 [![macOS 13.0+](https://img.shields.io/badge/macOS-13.0%2B-0078d7?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/documentation/vision)
 [![No API Key](https://img.shields.io/badge/no%20API%20key-required-brightgreen?style=flat-square)](#)
 [![Offline](https://img.shields.io/badge/offline-yes-blue?style=flat-square)](#)
-[![Glama](https://glama.ai/mcp/servers/woladi/macos-vision-mcp/badge)](https://glama.ai/mcp/servers/woladi/macos-vision-mcp)
+[![Glama](https://glama.ai/mcp/servers/woladi/macos-vision-mcp/badges/score.svg)](https://glama.ai/mcp/servers/woladi/macos-vision-mcp)
 
 Pre-extracts text and image data locally before your AI ever sees it — cutting token usage by ~97% on real documents and returning structured paragraphs, lines, and bounding boxes so the model can reconstruct the document into Markdown, HTML, DOCX, or any other format. Files never leave your Mac: no cloud API, no API keys, no network requests.
 
