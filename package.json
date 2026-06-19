@@ -2,7 +2,7 @@
   "name": "macos-vision-mcp",
   "mcpName": "io.github.woladi/macos-vision-mcp",
   "version": "0.4.9",
-  "description": "MCP server wrapping Apple Vision Framework for local OCR and image analysis — no cloud, no API keys.",
+  "description": "Local OCR, PDF text extraction & image analysis for MCP clients (Claude, Cursor) — Apple Vision Framework, fully offline, no API keys.",
   "type": "module",
   "bin": {
     "macos-vision-mcp": "./dist/index.js"
@@ -10,6 +10,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/woladi/macos-vision-mcp.git"
+  },
+  "homepage": "https://github.com/woladi/macos-vision-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/woladi/macos-vision-mcp/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,12 +28,26 @@
   },
   "keywords": [
     "mcp",
-    "macos",
+    "model-context-protocol",
+    "mcp-server",
     "ocr",
+    "pdf",
+    "pdf-ocr",
+    "image-to-text",
+    "text-extraction",
     "apple-vision",
+    "vision-framework",
+    "macos",
+    "barcode",
+    "qr-code",
+    "face-detection",
+    "image-classification",
+    "document-detection",
+    "screenshot",
     "claude",
-    "offline",
-    "local"
+    "claude-desktop",
+    "cursor",
+    "offline"
   ],
   "author": "Adrian Wolczuk",
   "license": "MIT",

@@ -4,16 +4,22 @@
   <img src=".github/assets/hero.jpg" alt="macos-vision-mcp — local, private, offline OCR for MCP-compatible LLMs" width="1200">
 </p>
 
-Local OCR & image analysis for any MCP client — private, offline, no API keys.
+Cut document token costs by ~97% with local, private, offline OCR for any MCP client — no API keys, no uploads.
 
 [![npm version](https://img.shields.io/npm/v/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
+[![GitHub stars](https://img.shields.io/github/stars/woladi/macos-vision-mcp?style=flat-square&logo=github)](https://github.com/woladi/macos-vision-mcp/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-ffd60a?style=flat-square)](LICENSE)
 [![macOS 13.0+](https://img.shields.io/badge/macOS-13.0%2B-0078d7?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/documentation/vision)
-[![No API Key](https://img.shields.io/badge/no%20API%20key-required-brightgreen?style=flat-square)](#)
-[![Offline](https://img.shields.io/badge/offline-yes-blue?style=flat-square)](#)
+[![No API Key](https://img.shields.io/badge/no%20API%20key-required-brightgreen?style=flat-square)](#privacy-layer)
+[![Offline](https://img.shields.io/badge/offline-yes-blue?style=flat-square)](#what-you-get)
 [![Glama](https://glama.ai/mcp/servers/woladi/macos-vision-mcp/badges/score.svg)](https://glama.ai/mcp/servers/woladi/macos-vision-mcp)
 
 Pre-extracts text and image data locally before your AI ever sees it — cutting token usage by ~97% on real documents and returning structured paragraphs, lines, and bounding boxes so the model can reconstruct the document into Markdown, HTML, DOCX, or any other format. Files never leave your Mac: no cloud API, no API keys, no network requests.
+
+> <sub>**How the ~97% is measured:** a 44-page scanned PDF sent as page images costs ~73,500 tokens; the same file run through `analyze_document` returns ~2,400 tokens of extracted text and structure (raw page-image tokens vs. extracted-text tokens). Your numbers vary with page density and tokenizer — treat 97% as the order of magnitude, not a guarantee.</sub>
+
+**Contents:** [Quick Start](#quick-start) · [What you get](#what-you-get) · [Why it's different](#why-its-different) · [Available Tools](#available-tools) · [Usage](#usage) · [Example workflows](#example-workflows) · [Configuration](#configuration) · [Privacy layer](#privacy-layer)
 
 ## What you get
 
@@ -40,6 +46,20 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 - ~2,400 tokens for the same 44-page PDF — 97% fewer
 - Files never leave your Mac
 
+## Why it's different
+
+Most OCR options for LLMs either ship your documents to a cloud vision API or make you stand up and tune your own engine. This runs on Apple's on-device Vision framework — the same engine behind Live Text in Photos.app — so extraction is free, private, and instant.
+
+|             | macos-vision-mcp                                            | Cloud vision OCR (GPT-4o, Google Vision, Mistral OCR) | Tesseract-based MCP              |
+| ----------- | ----------------------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| **Cost**    | $0 — no per-page or per-token fees                          | Per-call / per-page billing                           | $0, but self-hosted              |
+| **Offline** | Yes, after install                                          | No — every page hits the network                      | Yes                              |
+| **Privacy** | Files never leave your Mac                                  | Documents uploaded to a third party                   | Local                            |
+| **Setup**   | One command, no keys                                        | API key + billing account                             | Install + language data + tuning |
+| **Quality** | Apple Vision (strong on clean scans, receipts, screenshots) | Generally high                                        | Varies; weaker on poor scans     |
+
+The trade-off is honest: it's macOS-only, and on heavily skewed or low-contrast scans a cloud model may still read more. For the common case — invoices, contracts, receipts, screenshots, clean PDFs — you get cloud-grade extraction with zero cost, zero setup, and nothing leaving your machine.
+
 ## Privacy layer
 
 macos-vision-mcp acts as a local pre-processing layer between your documents and the cloud. Useful for:
@@ -59,9 +79,11 @@ Instead of sending the raw document to your AI, you extract the text and structu
 claude mcp add macos-vision-mcp -- npx -y macos-vision-mcp
 ```
 
+Using **Claude Desktop** or **Cursor**? [Jump to Configuration ↓](#configuration)
+
 Restart your client. `npx` fetches the package on first run, caches it, and the tools appear automatically — no separate install step. This is the convention used by most MCP servers and recommended by Anthropic, Cursor, and other clients.
 
-> **Note:** On first run, `macos-vision` downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases (~300 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
+> **Note:** On first run, the package downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases (~300 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
 
 > **Prefer instant cold-starts (no npx cache lookup)?** Install globally with `npm install -g macos-vision-mcp` and use the alternative config shown at the bottom of [Configuration](#configuration).
 
@@ -212,6 +234,10 @@ npm install -g macos-vision-mcp
 ```
 
 …then use `"command": "macos-vision-mcp"` (no `args`) in any of the JSON configs above, or `claude mcp add macos-vision-mcp -- macos-vision-mcp` for Claude Code. Note that global installs can break when switching Node versions with nvm / asdf / volta — re-run `npm install -g` after switching.
+
+## Support
+
+If macos-vision-mcp saved you tokens or kept a document on your Mac, consider [starring the repo](https://github.com/woladi/macos-vision-mcp) — it helps others find it.
 
 ## Contributing
 
