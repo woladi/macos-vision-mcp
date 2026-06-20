@@ -1,0 +1,43 @@
+name: Publish to MCP Registry
+
+# Keeps the official Model Context Protocol registry entry
+# (io.github.woladi/macos-vision-mcp) in sync after every release.
+#
+# Runs after the existing "Release" workflow finishes successfully (so npm has
+# already published the new version, which the registry validates against), and
+# can also be triggered manually to (re)publish the current version.
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    # workflow_dispatch always runs; the workflow_run path only runs on success.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for passwordless GitHub OIDC login to the registry
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync server.json version with package.json
+        run: |
+          export VERSION="$(node -p "require('./package.json').version")"
+          echo "Publishing version $VERSION to the MCP registry"
+          node -e "const fs=require('fs');const p='server.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));const v=process.env.VERSION;j.version=v;j.packages[0].version=v;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+          cat server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz mcp-publisher
+          sudo install mcp-publisher /usr/local/bin/mcp-publisher
+          mcp-publisher --version || true
+
+      - name: Log in to the MCP Registry (GitHub OIDC)
+        run: mcp-publisher login github-oidc
+
+      - name: Publish
+        run: mcp-publisher publish
