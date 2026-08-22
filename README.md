@@ -98,6 +98,26 @@ Restart your client. `npx` fetches the package on first run, caches it, and the 
 | `classify_image`   | Classify image content into 1000+ categories with confidence scores.                                                                                                                                                                                           | "What is in this image?"                             |
 | `analyze_document` | Returns structured JSON with reading-order paragraphs, raw text blocks (bbox / confidence), faces, barcodes, and rectangles — ready for the model to reconstruct into Markdown, HTML, or anything else. Also accepts `start_page` / `max_pages` for long PDFs. | "Reconstruct ~/Desktop/scan.pdf as clean Markdown"   |
 
+### UI-testing tools (local, no screenshots sent to the cloud)
+
+These tools let an agent **see and verify your Mac's UI without ever sending a screenshot to a
+cloud model**. Screenshots are captured locally, OCR runs on-device, and only paths, geometry,
+and extracted text are returned. `find_element` gives click coordinates in screen points, ready
+to hand to any input driver (this server deliberately does not click — eyes, not hands).
+
+| Tool                  | What it does                                                                                                                                                       | Example prompt                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `capture_screen`      | Screenshot the main display, a window (even occluded), an app's frontmost window, or a region. Returns the file path + screen-point frame — never the image bytes. | "Capture the Safari window"                          |
+| `list_windows`        | List on-screen windows with global screen-point bounds, front-to-back.                                                                                             | "What windows are open?"                             |
+| `read_screen_text`    | Capture + OCR in one step — read what an app shows right now, fully offline.                                                                                       | "What does the TestFlight window say?"               |
+| `find_element`        | Find a UI element by visible text; returns `clickPoint {x,y}` in global screen points (exact → substring → fuzzy matching with near-miss reporting).               | "Where is the Save button in MyApp?"                 |
+| `assert_text`         | Local pass/fail assertion that text is present on / absent from the screen — the verdict is computed on your Mac, not by a cloud model.                            | "Verify the dialog says 'Saved' after clicking Save" |
+| `vision_capabilities` | Report macOS version, Screen Recording / Accessibility permission state, and displays.                                                                             | "Can this machine run UI tests?"                     |
+
+> Requires **Screen Recording** permission for the app hosting the MCP server (Terminal / Claude
+> Desktop / Cursor): System Settings → Privacy & Security → Screen Recording. On first use the
+> tools compile a tiny native helper with `swiftc` (Xcode Command Line Tools).
+
 ## Usage
 
 Use the tool name explicitly in your prompt to guarantee local processing:

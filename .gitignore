@@ -28,3 +28,6 @@ coverage/
 
 # MCP registry tokens (local-only, never commit)
 .mcpregistry_*
+
+# Compiled native helpers (lazy-built or downloaded)
+bin/
