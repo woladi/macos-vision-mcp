@@ -271,7 +271,7 @@ export async function resolveImageSource(
  * the range U+0020-U+200B, which swallows all of ASCII and makes this function
  * return "" for every input. That shipped once; keep the escapes.
  */
-function normalizeText(s: string, caseSensitive = false): string {
+export function normalizeText(s: string, caseSensitive = false): string {
   let t = s
     .normalize("NFC")
     .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
@@ -284,7 +284,7 @@ function normalizeText(s: string, caseSensitive = false): string {
   return t;
 }
 
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const m = a.length;
   const n = b.length;
