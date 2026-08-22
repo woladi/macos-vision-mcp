@@ -323,9 +323,11 @@ function bboxCenterToScreenPoint(
   frame: ScreenFrame | null,
 ): { x: number; y: number } | null {
   if (!frame) return null;
+  // Whole pixels: sub-pixel precision means nothing to a click, and drivers
+  // (macos-mcp, cliclick) take integers — a fractional value is rejected outright.
   return {
-    x: Math.round((frame.x + (bbox.x + bbox.width / 2) * frame.w) * 10) / 10,
-    y: Math.round((frame.y + (bbox.y + bbox.height / 2) * frame.h) * 10) / 10,
+    x: Math.round(frame.x + (bbox.x + bbox.width / 2) * frame.w),
+    y: Math.round(frame.y + (bbox.y + bbox.height / 2) * frame.h),
   };
 }
 

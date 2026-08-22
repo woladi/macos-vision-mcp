@@ -116,7 +116,15 @@ describe("findMatches", () => {
     // Block centre is at (0.2, 0.225) of an image covering 1000×500pt at (100, 50).
     const frame = { x: 100, y: 50, w: 1000, h: 500 };
     const { matches } = findMatches([block("Zapisz")], "Zapisz", frame);
-    expect(matches[0].clickPoint).toEqual({ x: 300, y: 162.5 });
+    expect(matches[0].clickPoint).toEqual({ x: 300, y: 163 }); // whole pixels
+  });
+
+  it("returns integer clickPoints — drivers reject fractional coordinates", () => {
+    const frame = { x: 0, y: 0, w: 1496, h: 967 };
+    const { matches } = findMatches([block("Zapisz", { x: 0.0331, y: 0.1234 })], "Zapisz", frame);
+    const { x, y } = matches[0].clickPoint!;
+    expect(Number.isInteger(x)).toBe(true);
+    expect(Number.isInteger(y)).toBe(true);
   });
 
   it("returns a null clickPoint without a frame", () => {
