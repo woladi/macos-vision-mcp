@@ -30,9 +30,9 @@ struct DisplayInfo: Codable {
 struct PermissionsInfo: Codable {
     let screenRecording: Bool
     let accessibility: Bool
-    /// True while the login session is locked. Region capture (`screencapture -R`)
-    /// fails outright in that state, while full-screen and window capture still
-    /// work — so this is worth reporting rather than guessing at afterwards.
+    /// True while the login session is locked. Verified behaviour in that state:
+    /// window and region capture fail outright, and a full-screen capture returns
+    /// only the lock screen — so no capture is useful until the user unlocks.
     let screenLocked: Bool
 }
 

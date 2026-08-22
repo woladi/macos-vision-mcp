@@ -237,8 +237,9 @@ export async function captureScreen(opts: CaptureOptions = {}): Promise<CaptureR
     throw new Error(
       locked
         ? `screencapture failed for ${targetDesc}: the screen is locked. ` +
-            `Region capture does not work on a locked Mac (display and window capture still do). ` +
-            `Ask the user to unlock, then retry.`
+            `Window and region capture do not work on a locked Mac, and a full-screen ` +
+            `capture would only show the lock screen. Ask the user to unlock, then retry — ` +
+            `retrying while locked cannot succeed.`
         : `screencapture failed for ${targetDesc}${stderr ? ` (${stderr})` : ""}. ` +
             `The window may have closed, or the display may be asleep.`,
     );
