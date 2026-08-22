@@ -4,7 +4,8 @@
   <img src=".github/assets/hero.jpg" alt="macos-vision-mcp — local, private, offline OCR for MCP-compatible LLMs" width="1200">
 </p>
 
-Cut document token costs by ~97% with local, private, offline OCR for any MCP client — no API keys, no uploads.
+Local, private, offline OCR **and UI testing** for any MCP client — no API keys, no uploads.
+Cut document token costs by ~97%, and let an agent see and click your Mac's UI without a single screenshot leaving the machine.
 
 [![npm version](https://img.shields.io/npm/v/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/macos-vision-mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/macos-vision-mcp)
@@ -19,7 +20,7 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 
 > <sub>**How the ~97% is measured:** a 44-page scanned PDF sent as page images costs ~73,500 tokens; the same file run through `analyze_document` returns ~2,400 tokens of extracted text and structure (raw page-image tokens vs. extracted-text tokens). Your numbers vary with page density and tokenizer — treat 97% as the order of magnitude, not a guarantee.</sub>
 
-**Contents:** [Quick Start](#quick-start) · [What you get](#what-you-get) · [Why it's different](#why-its-different) · [Available Tools](#available-tools) · [Usage](#usage) · [Example workflows](#example-workflows) · [Configuration](#configuration) · [Privacy layer](#privacy-layer)
+**Contents:** [Quick Start](#quick-start) · [What you get](#what-you-get) · [UI testing](#ui-testing-without-sending-screenshots-anywhere) · [Why it's different](#why-its-different) · [Available Tools](#available-tools) · [Usage](#usage) · [Example workflows](#example-workflows) · [Configuration](#configuration) · [Privacy layer](#privacy-layer)
 
 ## What you get
 
@@ -30,6 +31,7 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 - Full document pipeline: OCR + faces + barcodes + rectangles in a single tool call.
 - Works with Claude Code, Claude Desktop, and Cursor — any MCP-compatible client.
 - No files uploaded to any server — processing stays entirely on your Mac.
+- **UI testing for agents**: screenshot a window locally, find an element by its visible text, get back click coordinates, and assert what's on screen — all without uploading the screenshot.
 - 100% offline after `npm install` — powered by Apple Vision Framework, same engine as Live Text in Photos.app.
 
 ## ❌ Without / ✅ With
@@ -46,17 +48,107 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 - ~2,400 tokens for the same 44-page PDF — 97% fewer
 - Files never leave your Mac
 
+## UI testing without sending screenshots anywhere
+
+The usual way to let an agent work with a GUI is to screenshot the screen and upload it to a
+vision model. That is one network round trip, one image-token bill, and one copy of whatever was
+on screen — per step. A ten-step flow means ten uploads of your desktop.
+
+This server does the seeing locally. Apple's Vision framework runs on the Neural Engine, so the
+screenshot stays on disk and only text, geometry, and verdicts reach the model.
+
+```
+find_element(query: "Save", app: "MyApp")
+  → { found: true, matches: [{ text: "Save", method: "exact",
+        clickPoint: { x: 812, y: 556 }, bbox: {...} }] }
+
+# hand clickPoint to any input driver — macos-mcp, cliclick, CGEvent
+# then verify, again locally:
+
+assert_text(expect: "Saved", app: "MyApp")  → { pass: true, ... }
+```
+
+`clickPoint` is in global screen points with a top-left origin — the same space click drivers
+use, so it goes straight to a driver with no conversion. This server deliberately does not click:
+it is eyes, not hands, and therefore never asks for control of your machine.
+
+### Is it actually cheaper, safer, and faster?
+
+Measured on an **Apple M1 Pro (2021, 16 GB)** against a 2992×1734 Retina window capture of a
+real, text-dense app — median of five runs each.
+
+|                          | Local (this server)                                 | Screenshot → cloud vision API        |
+| ------------------------ | --------------------------------------------------- | ------------------------------------ |
+| **Tokens per step**      | ~240 (an `assert_text` verdict)                     | ~6,900 (image tokens for 2992×1734)  |
+| **Data leaving the Mac** | none                                                | ~750 KB PNG of your screen, per step |
+| **Network**              | none — works offline, on a plane, behind an air gap | one round trip per step              |
+| **Latency**              | 1.17–1.25 s end-to-end for `find_element`           | upload + inference + return          |
+| **Cost**                 | $0                                                  | per-image, per-step, forever         |
+
+> <sub>Image tokens are estimated with Anthropic's `width × height / 750` rule; other providers
+> tile differently, so the exact figure moves but the order of magnitude does not. Local token
+> counts are the actual JSON payloads the tools returned, at ~4 characters per token.</sub>
+
+**Cheaper: yes, and the ratio is large.** A pass/fail verdict is ~240 tokens against ~6,900 for
+the image it replaces — roughly **29× less** for the same answer. Over a 20-step UI test that is
+~4,800 tokens instead of ~138,000.
+
+**Safer: yes, and this is the part that does not show up on an invoice.** A screenshot is not a
+neat crop of the widget under test. It carries whatever else was on screen: other windows, a
+password manager, a customer's data, an open inbox. Sending one to a third party is a disclosure
+you cannot take back, and it repeats on every step. Here the PNG is written to a temp file, read
+by an on-device model, and never serialised into the conversation — the tools return paths,
+geometry, and text, never image bytes. That invariant lives in the code, not just in this README.
+
+**Faster: usually, and always more predictable.** The honest breakdown of the 1.17–1.25 s:
+capture 0.31–0.41 s, Vision OCR of the full window ~1.04 s, matching <1 ms. There is no network
+term at all. The cloud path has to upload ~750 KB before inference even starts — on a 50 Mbit/s
+uplink that alone is ~0.12 s, on a 10 Mbit/s hotel connection ~0.6 s — then wait for a vision
+model and the response to come back. We have not benchmarked any specific provider, so treat the
+right-hand column as structure rather than a measured number; what we can state is that the local
+path has no variance from bandwidth, rate limits, or provider load, and it does not fail when the
+Wi-Fi does.
+
+Two honest caveats. Targeting a single region instead of a whole window cuts the OCR term
+sharply, since cost scales with pixels searched. And the first call after install spends ~2 s
+compiling a small Swift helper; every call after that is warm.
+
+### What it is good at — and what it is not
+
+Good at: **native macOS apps, Electron apps with poor accessibility, canvas/WebGL UIs, games,
+and design mockups** — anything where there is no DOM to query. Also good when you want a
+deterministic assertion rather than a model's opinion: `assert_text` is string matching after
+unicode normalisation, so it returns the same answer every time.
+
+Not the right tool for a plain web page: Playwright or the DOM will be faster and more precise
+there. And OCR only sees what is rendered, so it cannot read a control's `enabled` state or its
+accessibility role.
+
+Text matching is normalised before comparison — NFC, collapsed whitespace, unicode dashes and
+quotes folded — then tried exact → substring → fuzzy (Levenshtein). When a match is rejected it
+is still reported under `nearMisses`, so "the label is there but OCR read _Zapisr_ for _Zapisz_"
+is distinguishable from "the label is genuinely absent".
+
+### Requirements
+
+- **Screen Recording** permission for the app hosting the MCP server (Terminal, Claude Desktop,
+  Cursor): System Settings → Privacy & Security → Screen Recording, then restart that app.
+- An **unlocked** Mac. On a locked machine window and region capture fail outright and a
+  full-screen capture returns only the lock screen; `vision_capabilities` reports `screenLocked`
+  so an agent can check before it starts rather than guessing at a failure afterwards.
+
 ## Why it's different
 
 Most OCR options for LLMs either ship your documents to a cloud vision API or make you stand up and tune your own engine. This runs on Apple's on-device Vision framework — the same engine behind Live Text in Photos.app — so extraction is free, private, and instant.
 
-|             | macos-vision-mcp                                            | Cloud vision OCR (GPT-4o, Google Vision, Mistral OCR) | Tesseract-based MCP              |
-| ----------- | ----------------------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
-| **Cost**    | $0 — no per-page or per-token fees                          | Per-call / per-page billing                           | $0, but self-hosted              |
-| **Offline** | Yes, after install                                          | No — every page hits the network                      | Yes                              |
-| **Privacy** | Files never leave your Mac                                  | Documents uploaded to a third party                   | Local                            |
-| **Setup**   | One command, no keys                                        | API key + billing account                             | Install + language data + tuning |
-| **Quality** | Apple Vision (strong on clean scans, receipts, screenshots) | Generally high                                        | Varies; weaker on poor scans     |
+|                | macos-vision-mcp                                            | Cloud vision OCR (GPT-4o, Google Vision, Mistral OCR) | Tesseract-based MCP               |
+| -------------- | ----------------------------------------------------------- | ----------------------------------------------------- | --------------------------------- |
+| **Cost**       | $0 — no per-page or per-token fees                          | Per-call / per-page billing                           | $0, but self-hosted               |
+| **Offline**    | Yes, after install                                          | No — every page hits the network                      | Yes                               |
+| **Privacy**    | Files never leave your Mac                                  | Documents uploaded to a third party                   | Local                             |
+| **Setup**      | One command, no keys                                        | API key + billing account                             | Install + language data + tuning  |
+| **Quality**    | Apple Vision (strong on clean scans, receipts, screenshots) | Generally high                                        | Varies; weaker on poor scans      |
+| **UI testing** | Built in — capture, locate, assert, no uploads              | Possible, but every step uploads your screen          | OCR only; no capture or targeting |
 
 The trade-off is honest: it's macOS-only, and on heavily skewed or low-contrast scans a cloud model may still read more. For the common case — invoices, contracts, receipts, screenshots, clean PDFs — you get cloud-grade extraction with zero cost, zero setup, and nothing leaving your machine.
 
@@ -70,6 +162,12 @@ macos-vision-mcp acts as a local pre-processing layer between your documents and
 - Any situation where you want to extract structured data locally before deciding what (if anything) to send upstream
 
 Instead of sending the raw document to your AI, you extract the text and structure locally first. The model then works only with the extracted text — never the original file.
+
+The same applies to your screen. A screenshot taken for one small check still carries everything
+else that happened to be visible — other windows, a password manager, a customer record, an open
+inbox. The UI-testing tools keep that image on disk and return only paths, geometry, and text, so
+a UI assertion does not become an unplanned disclosure. No tool in this server returns image
+bytes to the model.
 
 ## Quick Start
 
@@ -157,6 +255,10 @@ Real-world combinations that work out of the box once the server is connected:
 - **"Scan receipts → JSON → expense tracker"** — `ocr_image` on a phone photo, the model normalizes amount / date / merchant, and pipes the result straight into your expense tool's API.
 - **"Decode a QR code from a screenshot"** — `detect_barcodes` returns the decoded value plus symbology in one round trip.
 - **"Crop a photo of a paper form before OCR"** — `detect_document` returns the four corner points so you (or a downstream tool) can deskew and crop the image before reading the text.
+- **"Click the Save button in my app"** — `find_element` returns `clickPoint` in screen points; hand it to a click driver (macos-mcp, cliclick). The screenshot never leaves the Mac.
+- **"Check my app still renders correctly after this change"** — `assert_text` gives a deterministic pass/fail on what is on screen, at ~240 tokens per check instead of ~6,900 for the screenshot.
+- **"Read the error message in that background window"** — `read_screen_text` captures a specific window, even one hidden behind others, and returns just the text.
+- **"What is my app showing right now?"** — `list_windows` to pick the target, `read_screen_text` to read it, without bringing the window to the front.
 
 ### Output schema (analyze_document)
 
