@@ -30,6 +30,15 @@ struct DisplayInfo: Codable {
 struct PermissionsInfo: Codable {
     let screenRecording: Bool
     let accessibility: Bool
+    /// True while the login session is locked. Region capture (`screencapture -R`)
+    /// fails outright in that state, while full-screen and window capture still
+    /// work — so this is worth reporting rather than guessing at afterwards.
+    let screenLocked: Bool
+}
+
+func isScreenLocked() -> Bool {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+    return session["CGSSessionScreenIsLocked"] as? Bool ?? false
 }
 
 func encodeJSON<T: Encodable>(_ value: T) -> String {
@@ -45,7 +54,8 @@ let args = CommandLine.arguments
 if args.contains("--permissions") {
     let info = PermissionsInfo(
         screenRecording: CGPreflightScreenCaptureAccess(),
-        accessibility: AXIsProcessTrusted()
+        accessibility: AXIsProcessTrusted(),
+        screenLocked: isScreenLocked()
     )
     print(encodeJSON(info))
     exit(0)

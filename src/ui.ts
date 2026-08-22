@@ -47,6 +47,8 @@ interface DisplayInfo {
 interface PermissionsInfo {
   screenRecording: boolean;
   accessibility: boolean;
+  /** True while the login session is locked — region capture cannot work. */
+  screenLocked: boolean;
 }
 
 /** Rectangle in global screen points, top-left origin (CGEvent click space). */
@@ -226,9 +228,19 @@ export async function captureScreen(opts: CaptureOptions = {}): Promise<CaptureR
     await execFileAsync("/usr/sbin/screencapture", args, { timeout: 15_000 });
   } catch (err) {
     const stderr = (err as { stderr?: string }).stderr?.trim();
+    // Ask the system rather than guessing: a locked session is the usual cause,
+    // and macOS refuses region capture there while still allowing display and
+    // window capture — so the agent needs to know which situation it is in.
+    const locked = await checkPermissions()
+      .then((p) => p.screenLocked)
+      .catch(() => false);
     throw new Error(
-      `screencapture failed for ${targetDesc}${stderr ? ` (${stderr})` : ""}. ` +
-        `Common causes: the screen is locked or asleep, or the window was closed.`,
+      locked
+        ? `screencapture failed for ${targetDesc}: the screen is locked. ` +
+            `Region capture does not work on a locked Mac (display and window capture still do). ` +
+            `Ask the user to unlock, then retry.`
+        : `screencapture failed for ${targetDesc}${stderr ? ` (${stderr})` : ""}. ` +
+            `The window may have closed, or the display may be asleep.`,
     );
   }
   if (!existsSync(out)) {
