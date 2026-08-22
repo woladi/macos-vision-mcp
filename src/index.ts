@@ -19,6 +19,7 @@ import {
   type Classification,
 } from "macos-vision";
 import { z } from "zod";
+import { capabilities, captureScreen, findMatches, listWindows, resolveImageSource } from "./ui.js";
 
 // Read version from package.json so release-it bumps stay in sync automatically.
 const require = createRequire(import.meta.url);
@@ -653,6 +654,273 @@ Parameters:
 
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+);
+
+// ═══ UI-testing tools ════════════════════════════════════════════════════════
+//
+// Privacy invariant: none of these tools ever return image bytes to the model.
+// Captures land on disk; only paths, geometry, and extracted text flow back.
+
+// ─── Tool 7: vision_capabilities ─────────────────────────────────────────────
+
+server.tool(
+  "vision_capabilities",
+  `Report what this machine can do: macOS version, Screen Recording / Accessibility permission
+state, available displays (with point sizes and Retina scale), and capture engine status.
+
+USE WHEN: Before starting a UI-testing session, or when capture/OCR tools fail unexpectedly —
+this tells you whether the problem is a missing permission and what to tell the user.
+
+Returns: JSON { macosVersion, uiHelper, permissions: { screenRecording, accessibility },
+displays: [{ displayId, isMain, x, y, w, h, scale }], capture, privacy }.`,
+  {},
+  async () => ({
+    content: [{ type: "text", text: JSON.stringify(await capabilities(), null, 2) }],
+  }),
+);
+
+// ─── Tool 8: list_windows ────────────────────────────────────────────────────
+
+server.tool(
+  "list_windows",
+  `List on-screen application windows with their global screen-point bounds — front-to-back order
+(first window of an app = its frontmost one).
+
+USE WHEN: You need a windowId for capture_screen / find_element, or want to know what apps are
+visible before testing their UI.
+
+Returns: JSON array [{ windowId, app, pid, title, x, y, w, h, layer, isOnScreen }].
+Coordinates are global screen POINTS with top-left origin — the same space click drivers use.`,
+  {
+    include_all: z
+      .boolean()
+      .default(false)
+      .describe("Include non-standard layers (menu bar, overlays). Default: normal windows only."),
+  },
+  async ({ include_all }) => ({
+    content: [{ type: "text", text: JSON.stringify(await listWindows(include_all), null, 2) }],
+  }),
+);
+
+// ─── Tool 9: capture_screen ──────────────────────────────────────────────────
+
+const captureShape = {
+  app: z
+    .string()
+    .optional()
+    .describe("Capture the frontmost window of this app (name, case-insensitive prefix ok)"),
+  window_id: z.number().int().optional().describe("Capture a specific window (from list_windows)"),
+  rect: z
+    .object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
+    .optional()
+    .describe("Capture a screen region, in global screen points (top-left origin)"),
+  display_id: z.number().int().optional().describe("Capture a specific display (default: main)"),
+  out_path: z.string().optional().describe("Where to save the PNG (default: temp dir)"),
+};
+
+// Shared shapes/mappers for the OCR-consuming tools (find_element, assert_text).
+const sourceShape = {
+  ...captureShape,
+  path: z
+    .string()
+    .optional()
+    .describe("Use an existing image instead of capturing (clickPoint needs frame too)"),
+  frame: z
+    .object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
+    .optional()
+    .describe("Screen region (points) a provided path covers — enables clickPoint mapping"),
+};
+
+const matchShape = {
+  case_sensitive: z.boolean().default(false),
+  fuzzy_threshold: z.number().min(0).max(1).default(0.75),
+  min_confidence: z.number().min(0).max(1).default(0.3),
+};
+
+interface CaptureArgs {
+  app?: string;
+  window_id?: number;
+  rect?: { x: number; y: number; w: number; h: number };
+  display_id?: number;
+  out_path?: string;
+  path?: string;
+  frame?: { x: number; y: number; w: number; h: number };
+}
+
+const toCaptureOpts = (a: CaptureArgs) => ({
+  app: a.app,
+  windowId: a.window_id,
+  rect: a.rect,
+  displayId: a.display_id,
+  outPath: a.out_path,
+  path: a.path,
+  frame: a.frame,
+});
+
+interface MatchArgs {
+  case_sensitive: boolean;
+  fuzzy_threshold: number;
+  min_confidence: number;
+}
+
+const toMatchOpts = (a: MatchArgs) => ({
+  caseSensitive: a.case_sensitive,
+  fuzzyThreshold: a.fuzzy_threshold,
+  minConfidence: a.min_confidence,
+});
+
+server.tool(
+  "capture_screen",
+  `Take a screenshot locally — of the main display, a specific window, an app's frontmost window,
+or a screen region. The image is saved to disk and NEVER returned to the model: you get back the
+file path plus geometry, so follow-up OCR/assertion tools can map results to screen coordinates.
+
+USE WHEN: Starting any UI check. Then chain: read_screen_text / find_element / assert_text on the
+returned path — or skip this tool entirely, since those tools can capture on their own.
+
+Requires: Screen Recording permission for the app hosting this MCP server.
+
+Returns: JSON { path, pixelWidth, pixelHeight, frame: {x,y,w,h} (screen points), scale,
+capturedAt, target }. frame is the screen region the image covers — needed to convert
+image positions to clickable screen points.`,
+  captureShape,
+  async (args) => {
+    const result = await captureScreen(toCaptureOpts(args));
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+// ─── Tool 10: read_screen_text ───────────────────────────────────────────────
+
+server.tool(
+  "read_screen_text",
+  `Capture the screen (or a window/app/region) and OCR it in one step — fully local, the
+screenshot never leaves this machine. Returns the visible text so you can check UI state
+without sending any image to the cloud.
+
+USE WHEN: "What does the screen/app show right now?", verifying a dialog appeared, reading an
+error message, checking state after an action.
+
+Parameters: same targeting as capture_screen (app / window_id / rect / display_id), plus:
+  format — "text" (default) plain text in reading order, or "blocks" with bboxes + confidence.
+
+Returns: JSON { capture: { path, frame, ... }, text } or { capture, blocks: [...] }.`,
+  {
+    ...captureShape,
+    format: z.enum(["text", "blocks"]).default("text"),
+  },
+  async ({ format, ...args }) => {
+    const capture = await captureScreen(toCaptureOpts(args));
+    const result =
+      format === "blocks"
+        ? await ocr(capture.path, { format: "blocks" })
+        : await ocr(capture.path, { format: "text" });
+    return {
+      content: [{ type: "text", text: JSON.stringify({ capture, [format]: result }, null, 2) }],
+    };
+  },
+);
+
+// ─── Tool 11: find_element ───────────────────────────────────────────────────
+
+server.tool(
+  "find_element",
+  `Find a UI element by its visible text and return WHERE TO CLICK — center coordinates in global
+screen points, ready to hand to any input driver (macos-mcp Click, cliclick, CGEvent). Capture,
+OCR, and matching all run locally; no screenshot is ever sent to the model or the cloud.
+
+USE WHEN: An agent needs to click/interact with something it can name ("click Save", "focus the
+search field") — this replaces sending a screenshot to a vision model to locate the element.
+
+Matching: text is normalized (unicode, whitespace, dashes/quotes, case) and matched exact →
+substring → fuzzy (Levenshtein). nearMisses report close-but-rejected candidates so you can
+see when OCR misread a label.
+
+Parameters: targeting like capture_screen (app / window_id / rect / display_id) or a
+pre-captured image via path (+ optional frame to map to screen points), plus:
+  query           — the visible text to find (button label, menu item, link text)
+  case_sensitive  — default false
+  fuzzy_threshold — min similarity 0–1 for fuzzy matches (default 0.75)
+  min_confidence  — ignore OCR blocks below this confidence (default 0.3)
+
+Returns: JSON { found, capture?, matches: [{ text, score, method, confidence, bbox,
+clickPoint: {x,y} | null }], nearMisses }. clickPoint is in global screen points (top-left
+origin). Multiple matches are sorted best-first — disambiguate via region or window targeting.`,
+  {
+    query: z.string().min(1).describe("Visible text of the element to locate"),
+    ...sourceShape,
+    ...matchShape,
+  },
+  async ({ query, case_sensitive, fuzzy_threshold, min_confidence, ...args }) => {
+    const { imagePath, screenFrame, capture } = await resolveImageSource(toCaptureOpts(args));
+    const blocks = await ocr(imagePath, { format: "blocks" });
+    const { matches, nearMisses } = findMatches(
+      blocks,
+      query,
+      screenFrame,
+      toMatchOpts({ case_sensitive, fuzzy_threshold, min_confidence }),
+    );
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            { found: matches.length > 0, query, capture, matches, nearMisses },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+// ─── Tool 12: assert_text ────────────────────────────────────────────────────
+
+server.tool(
+  "assert_text",
+  `Assert that text is present on (or absent from) the screen, a window, or a pre-captured image —
+a local pass/fail verdict computed on this machine. The deterministic check runs here; no
+screenshot and no OCR dump needs to reach a cloud model for a UI test to pass.
+
+USE WHEN: Verifying UI state after an action: "the dialog says Saved", "the error banner is
+gone", "all three menu items are visible".
+
+Parameters: targeting like capture_screen (app / window_id / rect / display_id) or a
+pre-captured image via path (+ optional frame to map matches to screen points), plus:
+  expect          — string or array of strings that must ALL satisfy the mode
+  mode            — "present" (default) or "absent"
+  case_sensitive, fuzzy_threshold, min_confidence — as in find_element
+
+Returns: JSON { pass, mode, results: [{ expect, satisfied, matches, nearMisses }], capture? }.
+nearMisses surface OCR misreads — a near miss on "present" usually means the text IS there
+but was transcribed imperfectly; consider lowering fuzzy_threshold.`,
+  {
+    expect: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+      .describe("Text (or list of texts) that must all be present/absent"),
+    mode: z.enum(["present", "absent"]).default("present"),
+    ...sourceShape,
+    ...matchShape,
+  },
+  async ({ expect, mode, case_sensitive, fuzzy_threshold, min_confidence, ...args }) => {
+    const { imagePath, screenFrame, capture } = await resolveImageSource(toCaptureOpts(args));
+    const blocks = await ocr(imagePath, { format: "blocks" });
+    const expectations = Array.isArray(expect) ? expect : [expect];
+    const matchOpts = toMatchOpts({ case_sensitive, fuzzy_threshold, min_confidence });
+
+    const results = expectations.map((exp) => {
+      const { matches, nearMisses } = findMatches(blocks, exp, screenFrame, matchOpts);
+      const satisfied = mode === "present" ? matches.length > 0 : matches.length === 0;
+      return { expect: exp, satisfied, matches, nearMisses };
+    });
+
+    const pass = results.every((r) => r.satisfied);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ pass, mode, results, capture }, null, 2) }],
     };
   },
 );
