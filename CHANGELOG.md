@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- d35dce0: feat: local UI-testing tools — `vision_capabilities`, `list_windows`, `capture_screen`, `read_screen_text`, `find_element`, `assert_text`
+
+  An agent can now see and verify macOS UI without sending a screenshot to a cloud model: capture happens locally, OCR runs on-device, and only paths, geometry and extracted text leave the module. `find_element` returns a whole-pixel `clickPoint` in global screen points, ready for any input driver — this server deliberately does not click. A locked screen is detected and reported outright instead of surfacing as an opaque capture failure.
+
+  Also raises the `macos-vision` dependency to ^1.6.0, which carries the `ui-helper` binary as a prebuilt; the interim `swiftc`-on-first-use compile stays for now (see docs/PLAN-ui-testing-vision.md).
+
 ## 0.4.9 (2026-06-17)
 
 ## 0.4.8 (2026-06-17)
@@ -18,7 +28,7 @@
 
 ### Bug Fixes
 
-* read McpServer version from package.json at runtime ([7b4703b](https://github.com/woladi/macos-vision-mcp/commit/7b4703b5ef3b77b487f7c654965394b5966d02c9))
+- read McpServer version from package.json at runtime ([7b4703b](https://github.com/woladi/macos-vision-mcp/commit/7b4703b5ef3b77b487f7c654965394b5966d02c9))
 
 ## 0.4.1 (2026-05-09)
 
@@ -26,13 +36,13 @@
 
 ### Features
 
-* structured JSON output for document reconstruction ([c00fa42](https://github.com/woladi/macos-vision-mcp/commit/c00fa42fe9f8faa033cd22dfc50d1fec9f0676e0))
+- structured JSON output for document reconstruction ([c00fa42](https://github.com/woladi/macos-vision-mcp/commit/c00fa42fe9f8faa033cd22dfc50d1fec9f0676e0))
 
 ## 0.2.7 (2026-05-08)
 
 ### Bug Fixes
 
-* upgrade npm to latest for OIDC trusted publishing support ([b1b1cb5](https://github.com/woladi/macos-vision-mcp/commit/b1b1cb58675dd2af0427f8427f5b80391032e2a5))
+- upgrade npm to latest for OIDC trusted publishing support ([b1b1cb5](https://github.com/woladi/macos-vision-mcp/commit/b1b1cb58675dd2af0427f8427f5b80391032e2a5))
 
 ## 0.2.6 (2026-05-08)
 
@@ -42,7 +52,7 @@
 
 ### Bug Fixes
 
-* split release-it and npm publish for OIDC trusted publishing ([6e217c5](https://github.com/woladi/macos-vision-mcp/commit/6e217c582b85a600089d085981ddb5aa93bb757a))
+- split release-it and npm publish for OIDC trusted publishing ([6e217c5](https://github.com/woladi/macos-vision-mcp/commit/6e217c582b85a600089d085981ddb5aa93bb757a))
 
 ## [0.2.3](https://github.com/woladi/macos-vision-mcp/compare/v0.2.1...v0.2.3) (2026-04-10)
 
@@ -52,4 +62,4 @@
 
 ### Features
 
-* initial release ([8b0d9e3](https://github.com/woladi/macos-vision-mcp/commit/8b0d9e33e58e49753a2a1e525714bb16ee7320e2))
+- initial release ([8b0d9e3](https://github.com/woladi/macos-vision-mcp/commit/8b0d9e33e58e49753a2a1e525714bb16ee7320e2))

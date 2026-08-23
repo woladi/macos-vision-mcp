@@ -6,12 +6,12 @@
     "url": "https://github.com/woladi/macos-vision-mcp",
     "source": "github"
   },
-  "version": "0.4.9",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "macos-vision-mcp",
-      "version": "0.4.9",
+      "version": "0.5.0",
       "runtimeHints": {
         "os": ["darwin"]
       },
