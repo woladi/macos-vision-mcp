@@ -1,48 +1,136 @@
 name: Release
 
+# Two-phase release, driven by changesets — the same model as the macos-vision
+# library repo:
+#
+#   · pending `.changeset/*.md` files      → open / update a "version packages"
+#                                             PR that bumps package.json,
+#                                             server.json and CHANGELOG.md.
+#   · that PR merged (no changesets left)  → `npm run release`
+#                                             (= build + `changeset publish`)
+#                                             → npm publish, git tag, GitHub
+#                                             Release. Then the MCP registry
+#                                             entry is refreshed.
+#
+# Nothing is ever pushed straight to master by a bot, so a merge landing while
+# the pipeline runs can no longer abort a release (that is what killed v0.4.10:
+# release-it pushed the bump commit itself and lost a non-fast-forward race).
+#
+# Auth to npm is Trusted Publishing (OIDC) — there is NO NPM_TOKEN secret.
+# Provenance is opt-in via package.json#publishConfig.provenance.
+#
+# Prerequisite (one-off, npm web UI):
+#   npmjs.com → Package → Settings → Trusted Publishers
+#     owner=woladi · repo=macos-vision-mcp · workflow=release.yml
+#     environment= (leave empty)
+
 on:
   push:
-    branches:
-      - master
-    paths-ignore:
-      - ".github/workflows/**"
+    branches: [master]
   workflow_dispatch:
+
+permissions:
+  contents:
+    write # changesets/action commits the version PR and creates
+    # the GitHub Release at publish time
+  pull-requests: write # …and opens / updates that PR
+  id-token: write # OIDC for npm Trusted Publishing + provenance
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
-    runs-on: macos-latest
+    name: Build & release
+    runs-on: macos-latest # swiftc only ships with macOS
+    timeout-minutes: 20
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      version: ${{ steps.published-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          # registry-url makes the npm CLI request an OIDC token from the
+          # runner and exchange it with the registry.
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+        env:
+          HUSKY: 0
+
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test
+
+      # npm bundled with Node 22 (10.x) predates OIDC Trusted Publishing, and
+      # setup-node injects a placeholder `_authToken` when registry-url is set —
+      # publishing with `XXXXX-XXXXX-…` makes the registry answer 404.
+      - name: Prepare npm for OIDC trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+          npm config delete //registry.npmjs.org/:_authToken || true
+
+      - id: changesets
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          publish: npm run release
+          title: "chore(release): version packages"
+          commit: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NPM_TOKEN intentionally absent — Trusted Publishing handles auth.
+
+      - id: published-version
+        if: steps.changesets.outputs.published == 'true'
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+  publish-registry:
+    name: Publish to MCP Registry
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
-      contents: write
-      id-token: write
+      id-token: write # passwordless GitHub OIDC login to the registry
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Sync version with latest git tag
-        run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [[ $LATEST_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            VERSION=${LATEST_TAG:1}
-            npm pkg set version="$VERSION"
-          fi
-
-      - name: Release (git tag + GitHub release)
-        run: npx release-it@latest --ci --no-npm.publish
+      # server.json is bumped in the version PR by scripts/sync-version.js, so
+      # by now it should already match. Fail loudly rather than publish a stale
+      # entry that points at a version npm does not have.
+      - name: Verify server.json matches the published version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          node -e '
+            const s = require("./server.json");
+            const v = process.env.VERSION;
+            const bad = [s.version, s.packages[0].version].filter(x => x !== v);
+            if (bad.length) {
+              console.error(`server.json is at ${s.version}/${s.packages[0].version}, expected ${v} — run npm run sync-version`);
+              process.exit(1);
+            }
+            console.log(`server.json is in sync at ${v}`);
+          '
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz mcp-publisher
+          sudo install mcp-publisher /usr/local/bin/mcp-publisher
+          mcp-publisher --version || true
 
-      - name: Publish to npm
-        run: npm publish --provenance
+      - name: Log in to the MCP Registry (GitHub OIDC)
+        run: mcp-publisher login github-oidc
+
+      - name: Publish
+        run: mcp-publisher publish
