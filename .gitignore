@@ -31,3 +31,6 @@ coverage/
 
 # Compiled native helpers (lazy-built or downloaded)
 bin/
+
+# Local agent workspace (settings, worktrees)
+.claude/

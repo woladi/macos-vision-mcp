@@ -363,7 +363,15 @@ If macos-vision-mcp saved you tokens or kept a document on your Mac, consider [s
 
 ## Contributing
 
-Contributions are welcome. Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages — this project uses `release-it` with `@release-it/conventional-changelog` to automate releases.
+Contributions are welcome. Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
+
+Releases run on [changesets](https://github.com/changesets/changesets). If your change is user-visible, add a changeset to the PR:
+
+```sh
+npm run changeset   # pick patch / minor / major, describe the change
+```
+
+Merging to `master` then opens a "version packages" PR that bumps the version, `server.json` and the changelog; merging *that* PR publishes to npm (Trusted Publishing, with provenance), tags the release, and refreshes the MCP registry entry.
 
 ```sh
 git clone <repo>
