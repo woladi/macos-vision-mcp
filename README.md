@@ -23,7 +23,7 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 
 > <sub>**How the ~97% is measured:** a 44-page scanned PDF sent as page images costs ~73,500 tokens; the same file run through `analyze_document` returns ~2,400 tokens of extracted text and structure (raw page-image tokens vs. extracted-text tokens). Your numbers vary with page density and tokenizer — treat 97% as the order of magnitude, not a guarantee.</sub>
 
-**Contents:** [Quick Start](#quick-start) · [What you get](#what-you-get) · [UI testing](#ui-testing-without-sending-screenshots-anywhere) · [Why it's different](#why-its-different) · [Available Tools](#available-tools) · [Usage](#usage) · [Example workflows](#example-workflows) · [Configuration](#configuration) · [Privacy layer](#privacy-layer)
+**Contents:** [Quick Start](#quick-start) · [What you get](#what-you-get) · [What agents use this for](#what-agents-use-this-for) · [UI testing](#ui-testing-without-sending-screenshots-anywhere) · [Why it's different](#why-its-different) · [Available Tools](#available-tools) · [Usage](#usage) · [Example workflows](#example-workflows) · [Configuration](#configuration) · [Privacy layer](#privacy-layer)
 
 ## What you get
 
@@ -50,6 +50,53 @@ Pre-extracts text and image data locally before your AI ever sees it — cutting
 - Local Apple Vision pre-extracts text before Claude ever sees it
 - ~2,400 tokens for the same 44-page PDF — 97% fewer
 - Files never leave your Mac
+
+## What agents use this for
+
+Most work an agent does on a Mac needs no deep understanding of a layout. It needs to see what is
+on screen, find the thing it is looking for, act on it, and confirm what happened. That loop —
+`list_windows` → `find_element` → click (via any input driver) → `assert_text` — covers a lot,
+and every step of it runs on the machine.
+
+- **Drive an app that has no API.** Native tools, Electron apps, internal software, anything with
+  a GUI and no scripting interface. `find_element("Export")` returns the point to click.
+- **Read what is on screen right now.** A dialog, an error banner, a notification, a progress
+  state — including a window sitting behind others, without bringing it to the front.
+- **Confirm an action actually worked.** `assert_text` is string matching after unicode
+  normalisation, so it answers pass/fail the same way every time instead of asking a model to
+  judge a picture.
+- **Pull data out of software that will not export it.** OCR a window, get the text, move on.
+- **Audit accessibility.** `ui_snapshot` reports every piece of visible text the accessibility
+  tree does not account for — unlabelled controls and custom-drawn text, with coordinates.
+- **Test a UI for regressions.** The case this started as, and still a good one — see the chapter
+  below.
+- **Work through documents.** The original job: invoices, contracts, scans, PDFs.
+
+### Why doing it locally is better, not just different
+
+**Cheaper.** A verdict costs ~240 tokens against ~6,900 for the screenshot it replaces — about
+**29×**. Over a twenty-step task that is ~4,800 tokens instead of ~138,000. It is the difference
+between an agent that can afford to check its work after every step and one that cannot.
+
+**More private, and this is the part that never shows up on a bill.** A screenshot is not a neat
+crop of the button you cared about. It carries whatever else was on screen: another window, a
+password manager, an open inbox, a customer's record. Sending one to a third party is a
+disclosure you cannot withdraw, and it repeats on every single step. Here the image is written to
+a temp file, read by a model on the Neural Engine, and never serialised into the conversation.
+That invariant is enforced in the code, not promised in this README: **no tool returns image
+bytes.**
+
+**Faster in practice, and predictable, which matters more.** `find_element` takes 1.17–1.25 s end
+to end on an M1 Pro — capture 0.31–0.41 s, OCR ~1.04 s, matching under a millisecond. There is no
+network term at all: no ~750 KB upload before inference can start, no rate limit, no provider
+under load, no failure when the Wi-Fi drops. The same call costs the same on a plane as it does
+at a desk.
+
+> **What this does not do: click.** It is eyes, not hands, and therefore never asks for control of
+> your machine. Pair it with an input driver — `cliclick`, a `macos-mcp`-style automation server,
+> or anything that accepts screen coordinates — and hand it the `clickPoint` that `find_element`
+> returns. The split is deliberate: seeing and acting are different permissions, and this server
+> only ever asks for the first.
 
 ## UI testing without sending screenshots anywhere
 
@@ -106,25 +153,14 @@ real, text-dense app — median of five runs each.
   <sub><b>Same question, same answer, ~29× the price.</b> Measured on an M1 Pro against a 2992×1734 window capture.</sub>
 </p>
 
-**Cheaper: yes, and the ratio is large.** A pass/fail verdict is ~240 tokens against ~6,900 for
-the image it replaces — roughly **29× less** for the same answer. Over a 20-step UI test that is
-~4,800 tokens instead of ~138,000.
+The three claims behind that table — cheaper, safer, faster — are argued in
+[What agents use this for](#why-doing-it-locally-is-better-not-just-different) above. What this
+section adds is the measurement: the numbers are a median of five runs on an Apple M1 Pro
+(2021, 16 GB) against a 2992×1734 Retina capture of a real, text-dense window.
 
-**Safer: yes, and this is the part that does not show up on an invoice.** A screenshot is not a
-neat crop of the widget under test. It carries whatever else was on screen: other windows, a
-password manager, a customer's data, an open inbox. Sending one to a third party is a disclosure
-you cannot take back, and it repeats on every step. Here the PNG is written to a temp file, read
-by an on-device model, and never serialised into the conversation — the tools return paths,
-geometry, and text, never image bytes. That invariant lives in the code, not just in this README.
-
-**Faster: usually, and always more predictable.** The honest breakdown of the 1.17–1.25 s:
-capture 0.31–0.41 s, Vision OCR of the full window ~1.04 s, matching <1 ms. There is no network
-term at all. The cloud path has to upload ~750 KB before inference even starts — on a 50 Mbit/s
-uplink that alone is ~0.12 s, on a 10 Mbit/s hotel connection ~0.6 s — then wait for a vision
-model and the response to come back. We have not benchmarked any specific provider, so treat the
-right-hand column as structure rather than a measured number; what we can state is that the local
-path has no variance from bandwidth, rate limits, or provider load, and it does not fail when the
-Wi-Fi does.
+We have not benchmarked any specific vision provider, so treat the right-hand column as structure
+rather than a measured figure. What can be stated is that the local path has no variance from
+bandwidth, rate limits or provider load, and does not fail when the network does.
 
 Two honest caveats. Targeting a single region instead of a whole window cuts the OCR term
 sharply, since cost scales with pixels searched. And the first call after install spends ~2 s
