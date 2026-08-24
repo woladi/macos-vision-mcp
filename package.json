@@ -1,7 +1,7 @@
 {
   "name": "macos-vision-mcp",
   "mcpName": "io.github.woladi/macos-vision-mcp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Local OCR, PDF text extraction & image analysis for MCP clients (Claude, Cursor) — Apple Vision Framework, fully offline, no API keys.",
   "type": "module",
   "bin": {
