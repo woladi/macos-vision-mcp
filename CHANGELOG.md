@@ -15,9 +15,17 @@
   and the token-cost contrast where the cost claim is made. Each carries a caption
   so the picture states the point rather than decorating it.
 
-  They also use absolute URLs. The old relative path meant **npm showed no image at
-  all** — the package page never resolved `.github/assets/`, so every reader
-  arriving from npm saw an unillustrated README.
+  They also use absolute URLs, which pin each image to `master` rather than
+  relying on npm's own rewriting.
+
+  > **Correction (0.6.4).** This entry originally claimed that the old relative
+  > path meant npm showed no image at all. That was wrong, and was based on
+  > grepping the npm page's HTML — which is client-rendered and contains no
+  > README markup, so the check could not have shown an image either way.
+  > Checked properly in a browser afterwards: npm does rewrite a relative path,
+  > to `raw.githubusercontent.com/<repo>/HEAD/…`, and the old hero did load.
+  > Absolute URLs are still worth having — they pin to a branch instead of
+  > floating on `HEAD` — but they fixed nothing that was broken.
 
 ## 0.6.2
 
