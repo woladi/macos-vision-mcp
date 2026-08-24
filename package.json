@@ -2,7 +2,7 @@
   "name": "macos-vision-mcp",
   "mcpName": "io.github.woladi/macos-vision-mcp",
   "version": "0.6.5",
-  "description": "Local OCR, PDF text extraction & image analysis for MCP clients (Claude, Cursor) — Apple Vision Framework, fully offline, no API keys.",
+  "description": "Local OCR and on-device screen reading for MCP clients (Claude, Cursor): read any window, locate elements to click, assert what's on screen. Apple Vision, no API keys, nothing uploaded.",
   "type": "module",
   "bin": {
     "macos-vision-mcp": "./dist/index.js"
@@ -47,7 +47,16 @@
     "claude",
     "claude-desktop",
     "cursor",
-    "offline"
+    "offline",
+    "computer-use",
+    "ui-automation",
+    "ui-testing",
+    "desktop-automation",
+    "accessibility",
+    "ai-agent",
+    "screen-capture",
+    "on-device",
+    "privacy"
   ],
   "author": "Adrian Wolczuk",
   "license": "MIT",
