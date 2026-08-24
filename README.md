@@ -133,6 +133,7 @@ is distinguishable from "the label is genuinely absent".
 
 - **Screen Recording** permission for the app hosting the MCP server (Terminal, Claude Desktop,
   Cursor): System Settings → Privacy & Security → Screen Recording, then restart that app.
+  No compiler or Xcode tooling is needed — the native helper arrives prebuilt.
 - An **unlocked** Mac. On a locked machine window and region capture fail outright and a
   full-screen capture returns only the lock screen; `vision_capabilities` reports `screenLocked`
   so an agent can check before it starts rather than guessing at a failure afterwards.
@@ -181,7 +182,7 @@ Using **Claude Desktop** or **Cursor**? [Jump to Configuration ↓](#configurati
 
 Restart your client. `npx` fetches the package on first run, caches it, and the tools appear automatically — no separate install step. This is the convention used by most MCP servers and recommended by Anthropic, Cursor, and other clients.
 
-> **Note:** On first run, the package downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`) from its GitHub Releases (~300 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
+> **Note:** On first run, the package downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`, `ui-helper`) from its GitHub Releases (~400 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
 
 > **Prefer instant cold-starts (no npx cache lookup)?** Install globally with `npm install -g macos-vision-mcp` and use the alternative config shown at the bottom of [Configuration](#configuration).
 
@@ -213,8 +214,8 @@ to hand to any input driver (this server deliberately does not click — eyes, n
 | `vision_capabilities` | Report macOS version, Screen Recording / Accessibility permission state, and displays.                                                                             | "Can this machine run UI tests?"                     |
 
 > Requires **Screen Recording** permission for the app hosting the MCP server (Terminal / Claude
-> Desktop / Cursor): System Settings → Privacy & Security → Screen Recording. On first use the
-> tools compile a tiny native helper with `swiftc` (Xcode Command Line Tools).
+> Desktop / Cursor): System Settings → Privacy & Security → Screen Recording, then restart that
+> app. Nothing else to install — the native helper ships prebuilt with `macos-vision`.
 
 ## Usage
 
@@ -371,7 +372,7 @@ Releases run on [changesets](https://github.com/changesets/changesets). If your 
 npm run changeset   # pick patch / minor / major, describe the change
 ```
 
-Merging to `master` then opens a "version packages" PR that bumps the version, `server.json` and the changelog; merging *that* PR publishes to npm (Trusted Publishing, with provenance), tags the release, and refreshes the MCP registry entry.
+Merging to `master` then opens a "version packages" PR that bumps the version, `server.json` and the changelog; merging _that_ PR publishes to npm (Trusted Publishing, with provenance), tags the release, and refreshes the MCP registry entry.
 
 ```sh
 git clone <repo>
