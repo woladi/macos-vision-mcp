@@ -200,6 +200,15 @@ System requirements:
     as a fallback if the prebuilt Swift helpers can't be downloaded at install
     time. The common path needs nothing beyond macOS + Node.js.
 
+Permissions (UI tools only — the document tools need none):
+  - Screen Recording, for the app hosting this server (Terminal, Claude Desktop,
+    Cursor). System Settings → Privacy & Security → Screen Recording, then
+    restart that app.
+  - Accessibility, additionally, for ui_snapshot.
+  - An unlocked Mac. A locked screen exposes no accessibility windows and
+    refuses window and region capture; vision_capabilities reports screenLocked
+    so this is checkable before starting rather than guessed at afterwards.
+
 Available capabilities:
 
   OCR (ocr_image)
@@ -238,6 +247,44 @@ Available capabilities:
       - faces, barcodes, rectangles — parallel detection sections
     PDFs are split per-page; coordinates are page-local 0–1. Accepts the
     same start_page / max_pages range options as ocr_image.
+
+  ── UI testing (local; no screenshot is ever returned to the model) ──
+
+  Screen capture (capture_screen)
+    Capture a display, a window (even one behind others), an app's frontmost
+    window, or a screen region. Writes a PNG to disk and returns its path,
+    pixel size and the screen rect it covers — never image bytes.
+
+  Window listing (list_windows)
+    On-screen windows front-to-back with their global screen-point bounds,
+    app name and pid. Use it to pick a target for the tools below.
+
+  Screen text (read_screen_text)
+    Capture and OCR in one step — read what an app is showing right now,
+    including a window that is not in front.
+
+  Element location (find_element)
+    Find an element by its visible text and get clickPoint {x, y} in global
+    screen points, ready to hand to an input driver. Matching normalizes
+    unicode and whitespace, then tries exact → substring → fuzzy, reporting
+    near misses so an OCR misread is distinguishable from absent text.
+    This server locates; it does not click.
+
+  Assertions (assert_text)
+    Deterministic pass/fail that text is present on or absent from the screen,
+    computed here. A verdict costs ~240 tokens against ~6,900 for the
+    screenshot it replaces.
+
+  Layout / box model (ui_snapshot)
+    The whole layout as JSON: every element's measured box, role, label and
+    state from the accessibility tree, optionally colours and fonts, plus the
+    visible text the tree does not account for (which doubles as an
+    accessibility finding). Read budget.capped before trusting completeness;
+    axTextCoverage is null when the walk was capped, deliberately.
+
+  Machine capabilities (vision_capabilities)
+    macOS version, permission state including screenLocked, displays, and the
+    Vision feature flags available on this machine.
 
   Reconstruction tip
     Concatenate paragraphs[].text with blank lines between paragraphs to get

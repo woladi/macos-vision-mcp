@@ -182,7 +182,7 @@ Using **Claude Desktop** or **Cursor**? [Jump to Configuration ↓](#configurati
 
 Restart your client. `npx` fetches the package on first run, caches it, and the tools appear automatically — no separate install step. This is the convention used by most MCP servers and recommended by Anthropic, Cursor, and other clients.
 
-> **Note:** On first run, the package downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`, `ui-helper`) from its GitHub Releases (~400 KB, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
+> **Note:** On first run, the package downloads prebuilt Swift helper binaries (`vision-helper`, `pdf-helper`, `ui-helper`, `ax-helper`) from its GitHub Releases (~276 KB compressed, ~1–2s). Subsequent invocations hit the npx cache and start instantly. Xcode Command Line Tools are only required as a fallback when the download can't reach the network — set `MACOS_VISION_SKIP_DOWNLOAD=1` to force local compilation with `swiftc`.
 
 > **Prefer instant cold-starts (no npx cache lookup)?** Install globally with `npm install -g macos-vision-mcp` and use the alternative config shown at the bottom of [Configuration](#configuration).
 
