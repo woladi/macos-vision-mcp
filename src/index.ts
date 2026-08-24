@@ -16,6 +16,7 @@ import {
   type Barcode,
   type Rectangle,
   type DocumentBounds,
+  uiSnapshot,
   type Classification,
 } from "macos-vision";
 import { z } from "zod";
@@ -922,6 +923,80 @@ but was transcribed imperfectly; consider lowering fuzzy_threshold.`,
     return {
       content: [{ type: "text", text: JSON.stringify({ pass, mode, results, capture }, null, 2) }],
     };
+  },
+);
+
+// ─── Tool 13: ui_snapshot ────────────────────────────────────────────────────
+
+server.tool(
+  "ui_snapshot",
+  `Return the layout of an app's window as structured JSON: every element's exact box, role,
+label and state from the macOS accessibility tree, optionally with colours and fonts — plus the
+visible text the tree does NOT account for. All computed on this Mac; the screenshot it takes
+never reaches the model.
+
+USE WHEN: You need to understand or reconstruct a layout rather than just find one element —
+"what is on this screen", "review this dialog's layout", "which controls are disabled", "is
+anything unlabelled for screen readers". For locating a single element to click, find_element is
+far cheaper.
+
+Unlike OCR, geometry here is MEASURED, not inferred: boxes come from the accessibility API in
+global screen points (top-left origin), so they are exact and include elements with no text at
+all. Roles, enabled/focused state and parent/child structure have no OCR equivalent.
+
+Parameters:
+  app / pid   — which application (one is required)
+  window      — which window, front-to-back. Default 0 (frontmost)
+  detail      — "content" (default) drops unlabelled structural containers, "full" keeps them
+  max_elements— cap the walk. Default 1500
+  colors      — sample background/border colours from the capture. Default true
+  ocr         — also report text the tree misses. Default true (costs ~1s)
+  typography  — read font family/size for text elements. Default false
+
+Returns: JSON { app, pid, window: [x,y,w,h], source, budget, nodes: [...], unresolved: [...],
+summary: {...} }.
+  nodes[]      — { id, parent?, depth, role, label?, value?, box: [x,y,w,h], style?, text?,
+                   enabled? (only when false), focused? (only when true) }
+  unresolved[] — visible text with no matching node: { text, box, confidence, coveredByNode? }
+  summary      — { nodes, labelled, ocrBlocks, unresolved, axTextCoverage, cappedWalk? }
+
+IMPORTANT — reading the output honestly:
+  · budget.capped = true means the walk hit max_elements and the tree is INCOMPLETE. Raise
+    max_elements before drawing conclusions from it.
+  · summary.axTextCoverage is null whenever the walk was capped, because the figure would then
+    measure how much of the tree was visited rather than how accessible the app is.
+  · unresolved entries with coveredByNode = an element exists but exposes no label (an
+    accessibility bug); without it = nothing is exposed there at all (usually custom drawing,
+    canvas, WebGL or text baked into an image).
+  · style colours come from pixels, so an element hidden behind another window reports the
+    colour of whatever is drawn on top. borderWidth is inferred, not measured; there is no
+    padding or margin — this is not the CSS box model.
+
+Requires Accessibility permission (System Settings → Privacy & Security → Accessibility) in
+addition to Screen Recording. A full window of a dense app runs to a few thousand tokens, so
+prefer max_elements or a specific window over dumping everything.`,
+  {
+    app: z.string().optional().describe("Application name (exact, else case-insensitive prefix)"),
+    pid: z.number().int().optional().describe("Target by process id instead of name"),
+    window: z.number().int().min(0).optional().describe("Which window, front-to-back. Default 0"),
+    detail: z.enum(["content", "full"]).optional(),
+    max_elements: z.number().int().min(1).optional(),
+    colors: z.boolean().optional().describe("Sample colours from the capture. Default true"),
+    ocr: z.boolean().optional().describe("Report text the tree misses. Default true"),
+    typography: z.boolean().optional().describe("Read fonts for text elements. Default false"),
+  },
+  async ({ app, pid, window, detail, max_elements, colors, ocr: wantOcr, typography }) => {
+    const snapshot = await uiSnapshot({
+      app,
+      pid,
+      window,
+      detail,
+      maxElements: max_elements,
+      colors,
+      ocr: wantOcr,
+      typography,
+    });
+    return { content: [{ type: "text", text: JSON.stringify(snapshot, null, 2) }] };
   },
 );
 

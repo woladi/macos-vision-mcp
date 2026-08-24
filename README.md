@@ -204,18 +204,68 @@ cloud model**. Screenshots are captured locally, OCR runs on-device, and only pa
 and extracted text are returned. `find_element` gives click coordinates in screen points, ready
 to hand to any input driver (this server deliberately does not click — eyes, not hands).
 
-| Tool                  | What it does                                                                                                                                                       | Example prompt                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `capture_screen`      | Screenshot the main display, a window (even occluded), an app's frontmost window, or a region. Returns the file path + screen-point frame — never the image bytes. | "Capture the Safari window"                          |
-| `list_windows`        | List on-screen windows with global screen-point bounds, front-to-back.                                                                                             | "What windows are open?"                             |
-| `read_screen_text`    | Capture + OCR in one step — read what an app shows right now, fully offline.                                                                                       | "What does the TestFlight window say?"               |
-| `find_element`        | Find a UI element by visible text; returns `clickPoint {x,y}` in global screen points (exact → substring → fuzzy matching with near-miss reporting).               | "Where is the Save button in MyApp?"                 |
-| `assert_text`         | Local pass/fail assertion that text is present on / absent from the screen — the verdict is computed on your Mac, not by a cloud model.                            | "Verify the dialog says 'Saved' after clicking Save" |
-| `vision_capabilities` | Report macOS version, Screen Recording / Accessibility permission state, and displays.                                                                             | "Can this machine run UI tests?"                     |
+| Tool                  | What it does                                                                                                                                                                                        | Example prompt                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `capture_screen`      | Screenshot the main display, a window (even occluded), an app's frontmost window, or a region. Returns the file path + screen-point frame — never the image bytes.                                  | "Capture the Safari window"                           |
+| `list_windows`        | List on-screen windows with global screen-point bounds, front-to-back.                                                                                                                              | "What windows are open?"                              |
+| `read_screen_text`    | Capture + OCR in one step — read what an app shows right now, fully offline.                                                                                                                        | "What does the TestFlight window say?"                |
+| `find_element`        | Find a UI element by visible text; returns `clickPoint {x,y}` in global screen points (exact → substring → fuzzy matching with near-miss reporting).                                                | "Where is the Save button in MyApp?"                  |
+| `assert_text`         | Local pass/fail assertion that text is present on / absent from the screen — the verdict is computed on your Mac, not by a cloud model.                                                             | "Verify the dialog says 'Saved' after clicking Save"  |
+| `vision_capabilities` | Report macOS version, Screen Recording / Accessibility permission state, and displays.                                                                                                              | "Can this machine run UI tests?"                      |
+| `ui_snapshot`         | Return the whole layout as JSON: every element's exact box, role, label and state from the accessibility tree, optionally with colours and fonts — plus visible text the tree does not account for. | "Review this dialog's layout" · "What is unlabelled?" |
 
 > Requires **Screen Recording** permission for the app hosting the MCP server (Terminal / Claude
 > Desktop / Cursor): System Settings → Privacy & Security → Screen Recording, then restart that
 > app. Nothing else to install — the native helper ships prebuilt with `macos-vision`.
+
+#### `ui_snapshot` — the layout, not just the text
+
+`find_element` answers "where is X". `ui_snapshot` answers "what is on this screen": every
+element's **measured** box (from the accessibility API, not inferred from OCR), its role, label
+and enabled state, the parent/child structure, and optionally colours sampled from the capture
+and real font data.
+
+```jsonc
+{
+  "app": "MyApp",
+  "window": [0, 29, 1496, 867],
+  "source": "ax+px",
+  "budget": { "elements": 289, "walked": 400, "capped": false, "elapsedMs": 136 },
+  "nodes": [
+    {
+      "id": 42,
+      "parent": 7,
+      "role": "Button",
+      "label": "Zapisz",
+      "box": [812, 540, 96, 32],
+      "style": { "bg": "#2F6FEB", "border": "#1B4FC4", "borderWidth": 1 },
+      "text": { "font": "SFPro-Semibold", "size": 13, "align": "center" },
+    },
+  ],
+  "unresolved": [{ "text": "Sprzedaż Q4", "box": [420, 300, 88, 16], "coveredByNode": 17 }],
+  "summary": {
+    "nodes": 289,
+    "labelled": 240,
+    "ocrBlocks": 123,
+    "unresolved": 21,
+    "axTextCoverage": 0.83,
+  },
+}
+```
+
+`unresolved` is text Vision can read that no accessibility node accounts for. It completes the
+picture where AX is blind — canvas, WebGL, games, text baked into images — and each entry is an
+accessibility gap in the app: `coveredByNode` present means a control is there but unlabelled,
+absent means nothing is exposed at all.
+
+Read it honestly: `budget.capped` means the tree is **incomplete**, and `summary.axTextCoverage`
+is `null` in that case on purpose — a capped walk measures how much was visited, not how
+accessible the app is. Colours come from pixels, so an occluded element reports whatever is drawn
+on top; `borderWidth` is inferred and there is no padding or margin. This is not the CSS box
+model.
+
+Needs **Accessibility** permission in addition to Screen Recording, and an unlocked Mac — a
+locked screen exposes no accessibility windows at all.
 
 ## Usage
 
