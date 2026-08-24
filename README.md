@@ -1,7 +1,10 @@
 # macos-vision-mcp
 
 <p align="center">
-  <img src=".github/assets/hero.jpg" alt="macos-vision-mcp — local, private, offline OCR for MCP-compatible LLMs" width="1200">
+  <img src="https://raw.githubusercontent.com/woladi/macos-vision-mcp/master/.github/assets/hero.jpg" alt="A Mac with documents and an app window inside a glowing boundary; only a small JSON card crosses it toward the cloud" width="1200">
+</p>
+<p align="center">
+  <sub><b>Your documents and your screen stay on the machine.</b> Only extracted text and structured JSON ever reach the model.</sub>
 </p>
 
 Local, private, offline OCR **and UI testing** for any MCP client — no API keys, no uploads.
@@ -57,6 +60,13 @@ on screen — per step. A ten-step flow means ten uploads of your desktop.
 This server does the seeing locally. Apple's Vision framework runs on the Neural Engine, so the
 screenshot stays on disk and only text, geometry, and verdicts reach the model.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/woladi/macos-vision-mcp/master/.github/assets/ui-inspect.jpg" alt="An app window with measurement rectangles snapped around each element, a crosshair on the Save button labelled x 812 y 540, and a card of extracted structured data" width="1000">
+</p>
+<p align="center">
+  <sub><b>What the agent actually receives.</b> Element boxes, roles and labels — measured, not guessed — and the exact point to click. The screenshot itself never leaves the Mac.</sub>
+</p>
+
 ```
 find_element(query: "Save", app: "MyApp")
   → { found: true, matches: [{ text: "Save", method: "exact",
@@ -88,6 +98,13 @@ real, text-dense app — median of five runs each.
 > <sub>Image tokens are estimated with Anthropic's `width × height / 750` rule; other providers
 > tile differently, so the exact figure moves but the order of magnitude does not. Local token
 > counts are the actual JSON payloads the tools returned, at ~4 characters per token.</sub>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/woladi/macos-vision-mcp/master/.github/assets/token-cost.jpg" alt="Side by side: uploading a screenshot to a cloud costs a tall stack of 6,900 tokens; the same check run locally costs a tiny stack of 240" width="1000">
+</p>
+<p align="center">
+  <sub><b>Same question, same answer, ~29× the price.</b> Measured on an M1 Pro against a 2992×1734 window capture.</sub>
+</p>
 
 **Cheaper: yes, and the ratio is large.** A pass/fail verdict is ~240 tokens against ~6,900 for
 the image it replaces — roughly **29× less** for the same answer. Over a 20-step UI test that is
