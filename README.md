@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/woladi/macos-vision-mcp/master/.github/assets/logo-128.png" alt="macos-vision-mcp logo — a viewfinder locked onto an eye" width="96" height="96">
+</p>
+
 # macos-vision-mcp
 
 <p align="center">

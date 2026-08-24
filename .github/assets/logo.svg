@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="macos-vision-mcp">
+  <title>macos-vision-mcp</title>
+  <!-- Fills only, no strokes, and arc flags written out in full: several
+       renderers drop stroked paths or refuse the compact "110" flag shorthand,
+       either of which would leave the mark as a bare disc. Violet is always the
+       outermost shape, so the silhouette survives on light and dark alike. -->
+  <g fill="#6D08F1">
+    <path d="M16 16h157v30H46v127H16z"/>
+    <path d="M339 16h157v157h-30V46H339z"/>
+    <path d="M466 339h30v157H339v-30h127z"/>
+    <path d="M16 339h30v127h127v30H16z"/>
+  </g>
+  <path fill="#F80B29" fill-rule="evenodd" d="M 256,58 a 198,198 0 1,0 0,396 a 198,198 0 1,0 0,-396 Z M 256,74 a 182,182 0 1,1 0,364 a 182,182 0 1,1 0,-364 Z"/>
+  <circle cx="256" cy="256" r="162" fill="#F80B29"/>
+  <circle cx="256" cy="256" r="109" fill="#0B0C10"/>
+  <g fill="#F80B29">
+    <rect x="248.5" y="138" width="15" height="96"/>
+    <rect x="248.5" y="278" width="15" height="96"/>
+    <rect x="138" y="248.5" width="96" height="15"/>
+    <rect x="278" y="248.5" width="96" height="15"/>
+  </g>
+</svg>
