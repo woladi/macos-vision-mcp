@@ -1,0 +1,9 @@
+{
+  "w": 900,
+  "h": 400,
+  "items": [
+    { "text": "Unsaved changes", "size": 30, "cx": 450, "cy": 80 },
+    { "text": "Your document has been autosaved.", "size": 20, "cx": 450, "cy": 160 },
+    { "text": "OK", "size": 24, "cx": 450, "cy": 300 }
+  ]
+}

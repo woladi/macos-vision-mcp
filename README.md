@@ -186,11 +186,26 @@ quotes folded — then tried exact → substring → fuzzy (Levenshtein). When a
 is still reported under `nearMisses`, so "the label is there but OCR read _Zapisr_ for _Zapisz_"
 is distinguishable from "the label is genuinely absent".
 
+Substring hits are graded rather than treated alike: a query that stands on word boundaries,
+opens the label, and covers more of it scores higher. That ordering matters when the answer is
+a button — for the query `Save`, `Save Changes` must outrank `Don't Save`. Each match reports
+`wholeWord`, and `assert_text` decides its verdict only on matches where it is true: `Save`
+inside `Unsaved changes` is a coincidence of spelling, and it neither proves a Save button is on
+screen nor proves it is gone. Such hits are still listed, under `incidental`.
+
 ### Requirements
 
 - **Screen Recording** permission for the app hosting the MCP server (Terminal, Claude Desktop,
   Cursor): System Settings → Privacy & Security → Screen Recording, then restart that app.
   No compiler or Xcode tooling is needed — the native helper arrives prebuilt.
+
+  The grant is per **host process**, not per package: the same server can be fully working under
+  one client and blind under another on the same Mac. Without it, capture fails outright and
+  macOS additionally withholds every window title, so `list_windows` reports `title: ""` for
+  everything — that case is flagged as `titlesAvailable: false` rather than left to look like a
+  screen full of untitled windows. Run `vision_capabilities` first: `ready` and `blockers` say
+  what works right now.
+
 - An **unlocked** Mac. On a locked machine window and region capture fail outright and a
   full-screen capture returns only the lock screen; `vision_capabilities` reports `screenLocked`
   so an agent can check before it starts rather than guessing at a failure afterwards.

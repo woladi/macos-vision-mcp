@@ -1,0 +1,9 @@
+{
+  "w": 900,
+  "h": 400,
+  "items": [
+    { "text": "Quit without saving?", "size": 30, "cx": 450, "cy": 80 },
+    { "text": "Don't Save", "size": 24, "cx": 250, "cy": 300 },
+    { "text": "Save Changes", "size": 24, "cx": 650, "cy": 300 }
+  ]
+}
