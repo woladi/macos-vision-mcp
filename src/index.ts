@@ -20,7 +20,17 @@ import {
   type Classification,
 } from "macos-vision";
 import { z } from "zod";
-import { capabilities, captureScreen, findMatches, listWindows, resolveImageSource } from "./ui.js";
+import {
+  capabilities,
+  captureScreen,
+  checkPermissions,
+  findMatches,
+  listWindows,
+  obstructionFor,
+  resolveImageSource,
+  splitByAssertionStrength,
+  type CaptureResult,
+} from "./ui.js";
 
 // Read version from package.json so release-it bumps stay in sync automatically.
 const require = createRequire(import.meta.url);
@@ -721,8 +731,14 @@ state, available displays (with point sizes and Retina scale), and capture engin
 USE WHEN: Before starting a UI-testing session, or when capture/OCR tools fail unexpectedly —
 this tells you whether the problem is a missing permission and what to tell the user.
 
-Returns: JSON { macosVersion, uiHelper, permissions: { screenRecording, accessibility },
-displays: [{ displayId, isMain, x, y, w, h, scale }], capture, privacy }.`,
+Returns: JSON { macosVersion, helperVersion, permissions: { screenRecording, accessibility,
+screenLocked }, displays: [{ displayId, isMain, x, y, w, h, scale }], capture: { engine,
+windowCapture, regionCapture, windowTitles }, ready, blockers, privacy }.
+
+READ "ready" AND "blockers" FIRST. The capture flags are derived from the permissions actually
+reported, not assumed — when ready is false, every capture-based tool here will fail and
+"blockers" says exactly why and what to tell the user. Screen Recording is granted per HOST
+PROCESS: the same server is fully working under one host and blind under another.`,
   {},
   async () => ({
     content: [{ type: "text", text: JSON.stringify(await capabilities(), null, 2) }],
@@ -739,17 +755,53 @@ server.tool(
 USE WHEN: You need a windowId for capture_screen / find_element, or want to know what apps are
 visible before testing their UI.
 
-Returns: JSON array [{ windowId, app, pid, title, x, y, w, h, layer, isOnScreen }].
-Coordinates are global screen POINTS with top-left origin — the same space click drivers use.`,
+Returns: JSON { titlesAvailable, note?, windows: [{ windowId, app, pid, title, x, y, w, h,
+layer, isOnScreen }] }. Coordinates are global screen POINTS with top-left origin — the same
+space click drivers use.
+
+Window TITLES require Screen Recording permission for the host process. Without it macOS
+returns no names and every title is "" — indistinguishable from a genuinely untitled window.
+"titlesAvailable": false marks that case; match on "app" rather than "title" when it is false.`,
   {
     include_all: z
       .boolean()
       .default(false)
       .describe("Include non-standard layers (menu bar, overlays). Default: normal windows only."),
   },
-  async ({ include_all }) => ({
-    content: [{ type: "text", text: JSON.stringify(await listWindows(include_all), null, 2) }],
-  }),
+  async ({ include_all }) => {
+    const [windows, permissions] = await Promise.all([
+      listWindows(include_all),
+      // Cheap (one memoized helper call) and the only way to tell "untitled window"
+      // apart from "titles withheld" — CGWindowList simply omits kCGWindowName
+      // without Screen Recording, with no error of any kind.
+      checkPermissions().catch(() => null),
+    ]);
+    const titlesAvailable = permissions?.screenRecording ?? true;
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              titlesAvailable,
+              ...(titlesAvailable
+                ? {}
+                : {
+                    note:
+                      "Screen Recording is not granted to the host process, so macOS withheld " +
+                      "every window title. The empty strings below do not mean the windows are " +
+                      "untitled. Target windows by `app` instead, or grant the permission to the " +
+                      "host application and restart it.",
+                  }),
+              windows,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
 );
 
 // ─── Tool 9: capture_screen ──────────────────────────────────────────────────
@@ -813,6 +865,16 @@ interface MatchArgs {
   min_confidence: number;
 }
 
+/**
+ * A window capture pierces occlusion; a click driver does not. Whenever the caller
+ * targeted a window, check what stands in front of it so the returned coordinates
+ * are never presented as clickable when they would land on another app.
+ */
+const obstructionIfWindowTarget = (a: CaptureArgs, capture?: CaptureResult) =>
+  capture && (a.app || a.window_id != null)
+    ? obstructionFor({ app: a.app, windowId: a.window_id }, capture.frame)
+    : undefined;
+
 const toMatchOpts = (a: MatchArgs) => ({
   caseSensitive: a.case_sensitive,
   fuzzyThreshold: a.fuzzy_threshold,
@@ -832,11 +894,23 @@ Requires: Screen Recording permission for the app hosting this MCP server.
 
 Returns: JSON { path, pixelWidth, pixelHeight, frame: {x,y,w,h} (screen points), scale,
 capturedAt, target }. frame is the screen region the image covers — needed to convert
-image positions to clickable screen points.`,
+image positions to clickable screen points.
+
+When a window is targeted and other windows overlap it, an extra "obstruction" field lists them.
+The capture itself is unaffected (it sees through them) but a CLICK at those coordinates would
+land on the window in front, so raise the target application first.`,
   captureShape,
   async (args) => {
     const result = await captureScreen(toCaptureOpts(args));
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    const obstruction = await obstructionIfWindowTarget(args, result);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ ...result, ...(obstruction && { obstruction }) }, null, 2),
+        },
+      ],
+    };
   },
 );
 
@@ -883,8 +957,12 @@ USE WHEN: An agent needs to click/interact with something it can name ("click Sa
 search field") — this replaces sending a screenshot to a vision model to locate the element.
 
 Matching: text is normalized (unicode, whitespace, dashes/quotes, case) and matched exact →
-substring → fuzzy (Levenshtein). nearMisses report close-but-rejected candidates so you can
-see when OCR misread a label.
+substring → fuzzy (Levenshtein). Substring hits are GRADED, not flat: a query standing on word
+boundaries, opening the label, and covering more of it scores higher. That is what keeps
+"Save Changes" ahead of "Don\u2019t Save" for the query "Save". Each match carries wholeWord —
+false means the query only appears mid-word ("Save" inside "Unsaved"), which is a coincidence of
+spelling rather than evidence the label is on screen. nearMisses report close-but-rejected
+candidates so you can see when OCR misread a label.
 
 Parameters: targeting like capture_screen (app / window_id / rect / display_id) or a
 pre-captured image via path (+ optional frame to map to screen points), plus:
@@ -893,9 +971,12 @@ pre-captured image via path (+ optional frame to map to screen points), plus:
   fuzzy_threshold — min similarity 0–1 for fuzzy matches (default 0.75)
   min_confidence  — ignore OCR blocks below this confidence (default 0.3)
 
-Returns: JSON { found, capture?, matches: [{ text, score, method, confidence, bbox,
-clickPoint: {x,y} | null }], nearMisses }. clickPoint is in global screen points (top-left
-origin). Multiple matches are sorted best-first — disambiguate via region or window targeting.`,
+Returns: JSON { found, capture?, obstruction?, matches: [{ text, score, method, wholeWord,
+confidence, bbox, clickPoint: {x,y} | null }], nearMisses }. clickPoint is in global screen
+points (top-left origin). Matches are sorted best-first, but when the top two scores are close
+the label is genuinely ambiguous — disambiguate via region or window targeting rather than
+clicking the first one. An "obstruction" field means the target window is buried: the capture
+saw through it, a click would not.`,
   {
     query: z.string().min(1).describe("Visible text of the element to locate"),
     ...sourceShape,
@@ -910,13 +991,21 @@ origin). Multiple matches are sorted best-first — disambiguate via region or w
       screenFrame,
       toMatchOpts({ case_sensitive, fuzzy_threshold, min_confidence }),
     );
+    const obstruction = await obstructionIfWindowTarget(args, capture);
 
     return {
       content: [
         {
           type: "text",
           text: JSON.stringify(
-            { found: matches.length > 0, query, capture, matches, nearMisses },
+            {
+              found: matches.length > 0,
+              query,
+              capture,
+              ...(obstruction && { obstruction }),
+              matches,
+              nearMisses,
+            },
             null,
             2,
           ),
@@ -943,9 +1032,17 @@ pre-captured image via path (+ optional frame to map matches to screen points), 
   mode            — "present" (default) or "absent"
   case_sensitive, fuzzy_threshold, min_confidence — as in find_element
 
-Returns: JSON { pass, mode, results: [{ expect, satisfied, matches, nearMisses }], capture? }.
-nearMisses surface OCR misreads — a near miss on "present" usually means the text IS there
-but was transcribed imperfectly; consider lowering fuzzy_threshold.`,
+What counts as present: an exact match, a fuzzy match, or a substring standing on WORD
+BOUNDARIES. A query that only occurs mid-word does not decide the verdict either way — "Save"
+inside "Unsaved changes" neither proves a Save button is showing nor proves it is gone. Such
+hits are reported under "incidental" so nothing is hidden.
+
+Returns: JSON { pass, mode, results: [{ expect, satisfied, matches, incidental?, nearMisses }],
+capture?, obstruction? }. nearMisses surface OCR misreads — a near miss on "present" usually
+means the text IS there but was transcribed imperfectly; consider lowering fuzzy_threshold.
+
+Pass an ARRAY for several expectations. A single string that merely looks like a list is
+searched verbatim, which would report a confident pass for text nobody put on screen.`,
   {
     expect: z
       .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
@@ -962,13 +1059,33 @@ but was transcribed imperfectly; consider lowering fuzzy_threshold.`,
 
     const results = expectations.map((exp) => {
       const { matches, nearMisses } = findMatches(blocks, exp, screenFrame, matchOpts);
-      const satisfied = mode === "present" ? matches.length > 0 : matches.length === 0;
-      return { expect: exp, satisfied, matches, nearMisses };
+      // A mid-word substring is not evidence: "Unsaved changes" must neither prove
+      // a Save button present nor prove one absent. It is still reported, under
+      // `incidental`, so the verdict never hides what OCR actually saw.
+      const { qualifying, incidental } = splitByAssertionStrength(matches);
+      const satisfied = mode === "present" ? qualifying.length > 0 : qualifying.length === 0;
+      return {
+        expect: exp,
+        satisfied,
+        matches: qualifying,
+        ...(incidental.length > 0 && { incidental }),
+        nearMisses,
+      };
     });
 
+    const obstruction = await obstructionIfWindowTarget(args, capture);
     const pass = results.every((r) => r.satisfied);
     return {
-      content: [{ type: "text", text: JSON.stringify({ pass, mode, results, capture }, null, 2) }],
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            { pass, mode, results, capture, ...(obstruction && { obstruction }) },
+            null,
+            2,
+          ),
+        },
+      ],
     };
   },
 );
